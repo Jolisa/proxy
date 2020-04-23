@@ -82,7 +82,7 @@ void doit(int fd)
      printf("%s", buf);
      sscanf(buf, "%s %s %s", method, uri, version);
      if (strcasecmp(method, "GET")) {
-        client_error(fd, method, "501", "Not implemented",
+        client_error(fd, method, 501, "Not implemented",
         "Tiny does not implement this method");
          return;
      }
@@ -93,7 +93,7 @@ void doit(int fd)
      is_static = parse_uri(uri, filename, cgiargs);
 
      if (stat(filename, &sbuf) < 0) {
-        client_error(fd, filename, "404", "Not found",
+        client_error(fd, filename, 404, "File Not found",
         "Tiny couldn’t find this file");
         return;
      }
@@ -101,7 +101,7 @@ void doit(int fd)
      if (is_static) { /* Serve static content */
 
          if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
-              client_error(fd, filename, "403", "Forbidden",
+              client_error(fd, filename, 403, "Forbidden",
               "Tiny couldn’t read the file");
               return;
          }
@@ -110,7 +110,7 @@ void doit(int fd)
      } else { /* Serve dynamic content */
 
          if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
-             client_error(fd, filename, "403", "Forbidden",
+             client_error(fd, filename, 403, "Forbidden",
              "Tiny couldn’t run the CGI program");
              return;
          }
