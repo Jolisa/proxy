@@ -20,9 +20,9 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
-void serve_static(int fd, char *filename, int filesize);
-void serve_dynamic(int fd, char *filename, char *cgiargs);
-void get_filetype(char *filename, char *filetype);
+//void serve_static(int fd, char *filename, int filesize);
+//void serve_dynamic(int fd, char *filename, char *cgiargs);
+//void get_filetype(char *filename, char *filetype);
 
 
 //what else do we need to add?
@@ -104,26 +104,53 @@ int parse_uri_static(char *uri, char *filename, char *cgiargs)
 
 void doit(int fd)
 {
-     int is_static;
+     
      int serverfd;
      struct stat sbuf;
+     struct sockaddr_in serveraddr;
+	 struct addrinfo *ai;
      //char buf[MAXLINE];
      char *buf = NULL;
      char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
+     char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-     char filename[MAXLINE], cgiargs[MAXLINE];
+     char filename[MAXLINE];
+     //char cgiargs[MAXLINE];
      rio_t rio;
+
 
      
      /* Verify that this is a get request*/
-     sscanf(buf, "%s %s %s", method, uri, version);
-     if (strcasecmp(method, "GET")) {
+    sscanf(buf, "%s %s %s", method, uri, version);
+    if (strcasecmp(method, "GET")) {
         client_error(fd, method, 501, "Not implemented",
         "Tiny does not implement this method");
          return;
-     }
+    }
      
-     //serverfd = socket(AF_INET, SOCK_STREAM, 0);
+    //open connection to server
+    serverfd = socket(AF_INET, SOCK_STREAM, 0);
+    parse_uri(uri, &hostnamep, &portp, &pathnamep);
+    //get server IP address
+    getaddrinfo(hostnamep, NULL, NULL, &ai);
+     /*
+	 * Set the address of serveraddr to be server's IP address and port.
+	 * Be careful to ensure that the IP address and port are in network
+	 * byte order.
+	 */
+	memset(&serveraddr, 0, sizeof(serveraddr));
+	serveraddr.sin_family = AF_INET;
+	// FILL THIS IN.
+	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
+	/* should we be bit flipping this value here or naw??*/
+	serveraddr.sin_port = htons(*portp);
+
+	//serveraddr.sin_port = htons(portp);
+
+	// Establish a connection to the server with connect().
+	// FILL THIS IN.
+	connect(serverfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
+     
 
      //we want to 
      printf("Request headers:\n");
@@ -142,7 +169,7 @@ void doit(int fd)
     }
 
     /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
-    rio_writen(fd, buf, strlen(buf));
+    rio_writen(serverfd, buf, strlen(buf));
     printf("%s", buf);
     
     
@@ -178,7 +205,7 @@ void doit(int fd)
         printf("%s", headbuf);
         /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
         /* later tho we'll want to write back to the client fd*/
-        rio_writen(fd, headbuf, strlen(buf));
+        rio_writen(serverfd, headbuf, strlen(buf));
         //write this information to the server
         
 
@@ -231,71 +258,9 @@ void read_requesthdrs(rio_t *rp)
     return;
 }
 
-/*
- * serve_static - copy a file back to the client 
- */
-void serve_static(int fd, char *filename, int filesize)
-{
-    int srcfd;
-    char *srcp, filetype[MAXLINE], buf[MAXBUF];
-
-    /* Send response headers to client */
-    get_filetype(filename, filetype);
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
-    sprintf(buf, "%sConnection: close\r\n", buf);
-    sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
-    sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
-    Rio_writen(fd, buf, strlen(buf));
-    printf("Response headers:\n");
-    printf("%s", buf);
-
-    /* Send response body to client */
-    srcfd = Open(filename, O_RDONLY, 0);
-    srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    Close(srcfd);
-    Rio_writen(fd, srcp, filesize);
-    Munmap(srcp, filesize);
-}
-/*
- * serve_dynamic - run a CGI program on behalf of the client
- */
-void serve_dynamic(int fd, char *filename, char *cgiargs)
-{
-    char buf[MAXLINE], *emptylist[] = { NULL };
-
-    /* Return first part of HTTP response */
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    Rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Server: Tiny Web Server\r\n");
-    Rio_writen(fd, buf, strlen(buf));
-
-    if (Fork() == 0) { /* Child */
-        /* Real server would set all CGI vars here */
-        setenv("QUERY_STRING", cgiargs, 1);
-        Dup2(fd, STDOUT_FILENO); /* Redirect stdout to client */
-        Execve(filename, emptylist, environ); /* Run CGI program */
-    }
-    Wait(NULL); /* Parent waits for and reaps child */
-}
 
 
-/*
-* get_filetype - Derive file type from filename
-*/
-void get_filetype(char *filename, char *filetype)
-{
-    if (strstr(filename, ".html"))
-        strcpy(filetype, "text/html");
-    else if (strstr(filename, ".gif"))
-        strcpy(filetype, "image/gif");
-    else if (strstr(filename, ".png"))
-        strcpy(filetype, "image/png");
-    else if (strstr(filename, ".jpg"))
-        strcpy(filetype, "image/jpeg");
-    else
-        strcpy(filetype, "text/plain");
-}
+
 
 /*
  * Requires:
@@ -415,8 +380,8 @@ create_log_entry(const struct sockaddr_in *sockaddr, const char *uri, int size)
 
 
 	//put newline at the end of log_str
-	str_cat(log_str, "\n");
-	Free();
+	//str_cat(log_str, "\n");
+	//Free();
 
     //TODO: free the memory used to store the string
     //TODO: put newline at the end of the returned string
