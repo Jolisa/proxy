@@ -17,6 +17,7 @@ static char *create_log_entry(const struct sockaddr_in *sockaddr,
 		    const char *uri, int size);
 static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 		    char **pathnamep);
+int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 void serve_static(int fd, char *filename, int filesize);
@@ -67,30 +68,145 @@ main(int argc, char **argv)
 	return (0);
 }
 
+
+/*
+ * parse_uri_static - parse URI into filename and CGI args
+ *             return 0 if dynamic content, 1 if static
+ */
+int parse_uri_static(char *uri, char *filename, char *cgiargs) 
+{
+    char *ptr;
+
+    if (!strstr(uri, "cgi-bin")) {  /* Static content */
+	strcpy(cgiargs, "");                            
+	strcpy(filename, ".");                          
+	strcat(filename, uri);                          
+	if (uri[strlen(uri)-1] == '/')                  
+	    strcat(filename, "home.html");              
+	return 1;
+    }
+    else {  /* Dynamic content */                       
+	ptr = index(uri, '?');                          
+	if (ptr) {
+	    strcpy(cgiargs, ptr+1);
+	    *ptr = '\0';
+	}
+	else 
+	    strcpy(cgiargs, "");                        
+	strcpy(filename, ".");                          
+	strcat(filename, uri);                          
+	return 0;
+    }
+}
+/*
+ * doit - handle one HTTP request/response transaction
+ */
+
 void doit(int fd)
 {
      int is_static;
+     int serverfd;
      struct stat sbuf;
-     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+     //char buf[MAXLINE];
+     char *buf = NULL;
+     char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
+     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
      char filename[MAXLINE], cgiargs[MAXLINE];
      rio_t rio;
 
-     /* Read request line and headers */
-     Rio_readinitb(&rio, fd);
-     Rio_readlineb(&rio, buf, MAXLINE);
-     printf("Request headers:\n");
-     printf("%s", buf);
+     
+     /* Verify that this is a get request*/
      sscanf(buf, "%s %s %s", method, uri, version);
      if (strcasecmp(method, "GET")) {
         client_error(fd, method, 501, "Not implemented",
         "Tiny does not implement this method");
          return;
      }
+     
+     //serverfd = socket(AF_INET, SOCK_STREAM, 0);
+
+     //we want to 
+     printf("Request headers:\n");
+     int count = 0;
+     /* Read request line and headers */
+     Rio_readinitb(&rio, fd);
+
+
+     /* should these be \r\n or \n...\n might need to be the check for the end of the headers list*/	
+
+     while(strcmp(buf, "\r\n")) {
+     	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
+     	buf = (char*) realloc(buf, (count + 1) * MAXLINE);
+        Rio_readlineb(&rio, buf + (count * MAXLINE), MAXLINE);
+        count += 1;
+    }
+
+    /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
+    rio_writen(fd, buf, strlen(buf));
+    printf("%s", buf);
+    
+    
+    /* Read headers into head buf*/
+     
+     //THIS LOOP IS WRITTEN POORLY
+    //headbuf = (char*) calloc(MAXLINE, sizeof(char));
+     while(strcmp(headbuf, "\r\n")) {
+     	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
+     	
+     	/*  remove  any inappropriate connection types*/
+     	//CORRECT way to write these connection headers???
+     	if(strstr(headbuf, "Connection: keep-alive") != NULL) {
+     		//write over the contents written here, do not extend buffer size further
+     		continue;
+    	
+		}
+		if(strstr(headbuf, "Connection: connection") != NULL) {
+     		//write over the contents written here, do not extend buffer size further
+     		continue;
+    	
+		}
+		if(strstr(headbuf, "Connection: proxy-connection") != NULL) {
+     		//write over the contents written here, do not extend buffer size further
+     		continue;
+    	
+		}
+
+
+        Rio_readlineb(&rio, headbuf, MAXLINE);
+
+
+        printf("%s", headbuf);
+        /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
+        /* later tho we'll want to write back to the client fd*/
+        rio_writen(fd, headbuf, strlen(buf));
+        //write this information to the server
+        
+
+        
+
+    }
+
+    //concatenate buf and headbuf...is this neccesary if we write the info as we go
+    //strcat(buf, headbuf);
+    
+
+
+     
+     //printf("%s", buf);
+     //would we check here to make sure that the method is not keep-alive? 
+
+     //make headbuf, concatenate to buf, rio_init and write both to the server
+     
+
+
+
+
+     
 
      read_requesthdrs(&rio);
 
      /* Parse URI from GET request */
-     is_static = parse_uri(uri, filename, cgiargs);
+     
 
      if (stat(filename, &sbuf) < 0) {
         client_error(fd, filename, 404, "File Not found",
@@ -98,25 +214,7 @@ void doit(int fd)
         return;
      }
 
-     if (is_static) { /* Serve static content */
-
-         if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
-              client_error(fd, filename, 403, "Forbidden",
-              "Tiny couldn’t read the file");
-              return;
-         }
-
-         serve_static(fd, filename, sbuf.st_size);
-     } else { /* Serve dynamic content */
-
-         if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
-             client_error(fd, filename, 403, "Forbidden",
-             "Tiny couldn’t run the CGI program");
-             return;
-         }
-         serve_dynamic(fd, filename, cgiargs);
-     }
-
+     
 }// end doit
 
 /*need to add in docs*/
@@ -133,7 +231,9 @@ void read_requesthdrs(rio_t *rp)
     return;
 }
 
-
+/*
+ * serve_static - copy a file back to the client 
+ */
 void serve_static(int fd, char *filename, int filesize)
 {
     int srcfd;
@@ -157,7 +257,9 @@ void serve_static(int fd, char *filename, int filesize)
     Rio_writen(fd, srcp, filesize);
     Munmap(srcp, filesize);
 }
-
+/*
+ * serve_dynamic - run a CGI program on behalf of the client
+ */
 void serve_dynamic(int fd, char *filename, char *cgiargs)
 {
     char buf[MAXLINE], *emptylist[] = { NULL };
@@ -310,6 +412,11 @@ create_log_entry(const struct sockaddr_in *sockaddr, const char *uri, int size)
 	 */
 	snprintf(&log_str[log_strlen], log_maxlen - log_strlen, " %s %d", uri,
 	    size);
+
+
+	//put newline at the end of log_str
+	str_cat(log_str, "\n");
+	Free();
 
     //TODO: free the memory used to store the string
     //TODO: put newline at the end of the returned string
