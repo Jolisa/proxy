@@ -5,9 +5,17 @@
  *
  * Vidisha Ganesh vg19
  * Jolisa Brown jmb26
- */ 
+ */
 
 #include <assert.h>
+
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #include "csapp.h"
 
@@ -40,6 +48,7 @@ doit
 int
 main(int argc, char **argv)
 {
+    printf("STARTING MAIN PROCESS NOW\n");
     //for now, putting in what the tiny shell had, and we'll make adjustments
     int listenfd, connfd;
     char hostname[MAXLINE], port[MAXLINE];
@@ -104,6 +113,7 @@ int parse_uri_static(char *uri, char *filename, char *cgiargs)
 
 void doit(int fd)
 {
+     printf("STARTING DOIT FUNCTION!!!\n");
      
      int serverfd;
      struct stat sbuf;
@@ -120,40 +130,45 @@ void doit(int fd)
 
 
      
-     /* Verify that this is a get request*/
-    sscanf(buf, "%s %s %s", method, uri, version);
-    if (strcasecmp(method, "GET")) {
-        client_error(fd, method, 501, "Not implemented",
-        "Tiny does not implement this method");
-         return;
-    }
+
+
+    //we want to
+    printf("Request headers:\n");
      
     //open connection to server
     serverfd = socket(AF_INET, SOCK_STREAM, 0);
+    printf("0\n");
     parse_uri(uri, &hostnamep, &portp, &pathnamep);
+    printf("1\n");
     //get server IP address
     getaddrinfo(hostnamep, NULL, NULL, &ai);
+    printf("2\n");
      /*
 	 * Set the address of serveraddr to be server's IP address and port.
 	 * Be careful to ensure that the IP address and port are in network
 	 * byte order.
 	 */
 	memset(&serveraddr, 0, sizeof(serveraddr));
+	printf("3\n");
 	serveraddr.sin_family = AF_INET;
+	printf("4\n");
 	// FILL THIS IN.
-	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
-	/* should we be bit flipping this value here or naw??*/
 	serveraddr.sin_port = htons(*portp);
+	printf("5\n");
+	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
+
+	/* should we be bit flipping this value here or naw??*/
+
+    printf("6\n");
 
 	//serveraddr.sin_port = htons(portp);
 
 	// Establish a connection to the server with connect().
 	// FILL THIS IN.
 	connect(serverfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
-     
+    printf("7\n");
 
-     //we want to 
-     printf("Request headers:\n");
+    printf("Request headers 2:\n");
      
      /* Read request line and headers */
      Rio_readinitb(&rio, fd);
@@ -161,7 +176,7 @@ void doit(int fd)
 
      /* should these be \r\n or \n...\n might need to be the check for the end of the headers list*/	
      int count = 0;
-     while(strcmp(buf, "\r\n")) {
+     while(strstr(buf, "\r\n")) {
      	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
      	buf = (char*) realloc(buf, (count + 1) * MAXLINE);
         Rio_readlineb(&rio, buf + (count * MAXLINE), MAXLINE);
@@ -170,7 +185,7 @@ void doit(int fd)
 
     /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
     rio_writen(serverfd, buf, strlen(buf));
-    printf("%s", buf);
+    printf("%s\n", buf);
     
     
     /* Read headers into head buf*/
@@ -179,7 +194,7 @@ void doit(int fd)
     //headbuf = (char*) calloc(MAXLINE, sizeof(char));
      while(strcmp(headbuf, "\r\n")) {
      	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
-     	
+     	printf("%s\n", headbuf);
      	/*  remove  any inappropriate connection types*/
      	//CORRECT way to write these connection headers???
      	if(strstr(headbuf, "Connection: keep-alive") != NULL) {
@@ -212,6 +227,15 @@ void doit(int fd)
         
 
     }
+
+     /* Verify that this is a get request*/
+    sscanf(buf, "%s %s %s", method, uri, version);
+    if (strcasecmp(method, "GET")) {
+        client_error(fd, method, 501, "Not implemented",
+        "Tiny does not implement this method");
+         return;
+    }
+
 
     //concatenate buf and headbuf...is this neccesary if we write the info as we go
     //strcat(buf, headbuf);
