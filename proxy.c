@@ -154,13 +154,13 @@ void doit(int fd)
 
      //we want to 
      printf("Request headers:\n");
-     int count = 0;
+     
      /* Read request line and headers */
      Rio_readinitb(&rio, fd);
 
 
      /* should these be \r\n or \n...\n might need to be the check for the end of the headers list*/	
-
+     int count = 0;
      while(strcmp(buf, "\r\n")) {
      	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
      	buf = (char*) realloc(buf, (count + 1) * MAXLINE);
