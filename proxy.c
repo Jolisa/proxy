@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+//#include "cis307.h"
 #include "csapp.h"
 
 static void	client_error(int fd, const char *cause, int err_num, 
@@ -120,7 +121,8 @@ void doit(int fd)
      struct sockaddr_in serveraddr;
 	 struct addrinfo *ai;
      //char buf[MAXLINE];
-     char *buf = NULL;
+     char *buf = (char *) Malloc(MAXLINE * sizeof(char));
+     char *temp_buf= (char *) Malloc(MAXLINE * sizeof(char));
      char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -133,15 +135,85 @@ void doit(int fd)
 
 
     //we want to
-    printf("Request headers:\n");
      
+    printf("Request headers0:\n");
+     /* Read request line and headers */
+
+    int count = 1;
+     Rio_readinitb(&rio, fd);
+     //Rio_readlineb(&rio, buf , MAX);
+     printf("Request headers more:\n");
+
+     
+     //printf("Maxline is %d\n", MAXLINE);
+     /*while(strcmp(buf, "\r\n")) {
+     	buf_extended = (char*) realloc(buf_extended, (count * MAX));
+     	
+     	//Rio_readlineb(&rio, ((buf )), MAX);
+        Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
+        strcat(buf_extended, buf);
+        printf("bufis : %s and is size %d\n", buf, (int) strlen(buf));
+        printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
+        count += 1;
+        printf("Count is %d\n", count);
+    }*/
+     while(!strstr(buf, "\r\n")) {
+     	//buf = (char*) realloc(buf, ((count + 1) * MAX));
+     	//buf_extended = (char*) realloc(buf_extended, (count * MAX));
+     	Rio_readlineb(&rio, ((temp_buf )), MAXLINE);
+     	strcat(buf, temp_buf);
+        //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
+        printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
+        //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
+        count += 1;
+        //printf("Count is %d\n", count);
+    }
+     /* Verify that this is a get request*/
+     //printf("Request headers1:\n");
+
+     
+     sscanf(buf, "%s %s %s", method, uri, version);     
+    if (strcasecmp(method, "GET")) {
+        client_error(fd, method, 501, "Not implemented",
+        "Tiny does not implement this method");
+         return;
+    }
+    
+    printf("Request headers 2:\n");
+    
+     
+
+     /* FREEE STRINGS after completed use */
+     	
+     printf("About to parse uri:\n");
+     	
+     /* should these be \r\n or \n...\n might need to be the check for the end of the headers list*/	
+     
+
+
+	
+    
+    
+     printf("Uri is: %s\n", uri);
+    parse_uri(uri, &hostnamep, &portp, &pathnamep);
+
+    printf("Hostname is: %s\n", hostnamep);
+    printf("Port is: %s\n", portp);
+    printf("Pathname is: %s\n", pathnamep);
+
+
     //open connection to server
     serverfd = socket(AF_INET, SOCK_STREAM, 0);
     printf("0\n");
-    parse_uri(uri, &hostnamep, &portp, &pathnamep);
-    printf("1\n");
+        printf("1\n");
+
     //get server IP address
-    getaddrinfo(hostnamep, NULL, NULL, &ai);
+    if (getaddrinfo(hostnamep, NULL, NULL, &ai) != 0) {
+    	printf("failed to get the address info\n");
+    }
+
+
+    	
     printf("2\n");
      /*
 	 * Set the address of serveraddr to be server's IP address and port.
@@ -155,7 +227,8 @@ void doit(int fd)
 	// FILL THIS IN.
 	serveraddr.sin_port = htons(*portp);
 	printf("5\n");
-	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
+	serveraddr.sin_addr = (((struct sockaddr_in *)(ai->ai_addr))->sin_addr);
+	//serveraddr.sin_addr.s_addr = ntohs((((struct sockaddr_in *)(ai->ai_addr))->sin_addr).s_addr);
 
 	/* should we be bit flipping this value here or naw??*/
 
@@ -168,24 +241,14 @@ void doit(int fd)
 	connect(serverfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
     printf("7\n");
 
-    printf("Request headers 2:\n");
-     
-     /* Read request line and headers */
-     Rio_readinitb(&rio, fd);
 
 
-     /* should these be \r\n or \n...\n might need to be the check for the end of the headers list*/	
-     int count = 0;
-     while(strstr(buf, "\r\n")) {
-     	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
-     	buf = (char*) realloc(buf, (count + 1) * MAXLINE);
-        Rio_readlineb(&rio, buf + (count * MAXLINE), MAXLINE);
-        count += 1;
-    }
+    /* now that server connection has opened, write buf value to server*/
 
     /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
     rio_writen(serverfd, buf, strlen(buf));
     printf("%s\n", buf);
+
     
     
     /* Read headers into head buf*/
@@ -228,13 +291,7 @@ void doit(int fd)
 
     }
 
-     /* Verify that this is a get request*/
-    sscanf(buf, "%s %s %s", method, uri, version);
-    if (strcasecmp(method, "GET")) {
-        client_error(fd, method, 501, "Not implemented",
-        "Tiny does not implement this method");
-         return;
-    }
+    
 
 
     //concatenate buf and headbuf...is this neccesary if we write the info as we go
@@ -268,7 +325,9 @@ void doit(int fd)
      
 }// end doit
 
-/*need to add in docs*/
+/*
+ * read_requesthdrs - read and parse HTTP request headers
+ */
 void read_requesthdrs(rio_t *rp)
 {
     char buf[MAXLINE];
@@ -302,10 +361,13 @@ static int
 parse_uri(const char *uri, char **hostnamep, char **portp, char **pathnamep)
 {
 	const char *pathname_begin, *port_begin, *port_end;
-
+	printf("in parse uri\n");
+	//printf("in parse uri3\n");
 	if (strncasecmp(uri, "http://", 7) != 0)
 		return (-1);
-
+	printf("in parse uri2\n");
+	printf("The uri is: %s\n", uri);
+	printf("Won't print\n");
 	/* Extract the host name. */
 	const char *host_begin = uri + 7;
 	const char *host_end = strpbrk(host_begin, ":/ \r\n");
@@ -349,6 +411,9 @@ parse_uri(const char *uri, char **hostnamep, char **portp, char **pathnamep)
 	strncpy(pathname, pathname_begin, len);
 	pathname[len] = '\0';
 	*pathnamep = pathname;
+	
+	printf("The hostname is %s\n", *hostnamep);
+	printf("The port is %s\n", *portp);
 
 	return (0);
 }
