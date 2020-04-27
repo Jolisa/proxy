@@ -28,7 +28,8 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 		    char **pathnamep);
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd);
-void read_requesthdrs(rio_t *rp);
+void read_requesthdrs(rio_t *rp, int clientfd);
+static int	open_client(char *hostname, int port);
 //void serve_static(int fd, char *filename, int filesize);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
 //void get_filetype(char *filename, char *filetype);
@@ -116,47 +117,31 @@ void doit(int fd)
 {
      printf("STARTING DOIT FUNCTION!!!\n");
      
-     int serverfd;
-     struct stat sbuf;
-     struct sockaddr_in serveraddr;
-	 struct addrinfo *ai;
+     int clientfd;
+     //struct stat sbuf;
+     //struct sockaddr_in serveraddr;
+	 //struct addrinfo *ai;
      //char buf[MAXLINE];
+     //need to check sizes of possible bufs - might actually need to realloc
      char *buf = (char *) Malloc(MAXLINE * sizeof(char));
      char *temp_buf= (char *) Malloc(MAXLINE * sizeof(char));
-     char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
+     //char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-     char filename[MAXLINE];
+     //char filename[MAXLINE];
      //char cgiargs[MAXLINE];
      rio_t rio;
-
-
-     
-
 
     //we want to
      
     printf("Request headers0:\n");
      /* Read request line and headers */
 
-    int count = 1;
-     Rio_readinitb(&rio, fd);
-     //Rio_readlineb(&rio, buf , MAX);
-     printf("Request headers more:\n");
 
-     
-     //printf("Maxline is %d\n", MAXLINE);
-     /*while(strcmp(buf, "\r\n")) {
-     	buf_extended = (char*) realloc(buf_extended, (count * MAX));
-     	
-     	//Rio_readlineb(&rio, ((buf )), MAX);
-        Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
-        strcat(buf_extended, buf);
-        printf("bufis : %s and is size %d\n", buf, (int) strlen(buf));
-        printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-        count += 1;
-        printf("Count is %d\n", count);
-    }*/
+     Rio_readinitb(&rio, fd);
+
+     //goes through the first line and gets the line while there are still characters to get
+//     int count = 1;
      while(!strstr(buf, "\r\n")) {
      	//buf = (char*) realloc(buf, ((count + 1) * MAX));
      	//buf_extended = (char*) realloc(buf_extended, (count * MAX));
@@ -165,177 +150,147 @@ void doit(int fd)
         //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
         printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
         //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-        count += 1;
+//        count += 1;
         //printf("Count is %d\n", count);
-    }
-     /* Verify that this is a get request*/
-     //printf("Request headers1:\n");
+     }
 
-     
-     sscanf(buf, "%s %s %s", method, uri, version);     
+
+     /* Verify that this is a get request*/
+    sscanf(buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) {
         client_error(fd, method, 501, "Not implemented",
         "Tiny does not implement this method");
          return;
     }
-    
-    printf("Request headers 2:\n");
-    
-     
+
+    if (strstr(version, "1.1") != NULL) { // it's version 1.1\
+        // TODO: fill in the difference, which is to send connection: closed in headers
+    }
 
      /* FREEE STRINGS after completed use */
      	
      printf("About to parse uri:\n");
-     	
-     /* should these be \r\n or \n...\n might need to be the check for the end of the headers list*/	
-     
+    printf("Uri is: %s\n", uri);
 
-
-	
-    
-    
-     printf("Uri is: %s\n", uri);
     parse_uri(uri, &hostnamep, &portp, &pathnamep);
-
     printf("Hostname is: %s\n", hostnamep);
     printf("Port is: %s\n", portp);
     printf("Pathname is: %s\n", pathnamep);
 
+    clientfd = open_client(hostnamep, *portp);
 
-    //open connection to server
-    serverfd = socket(AF_INET, SOCK_STREAM, 0);
-    printf("0\n");
-        printf("1\n");
+    // writes first line of request to the origin server
+    rio_writen(clientfd, buf, strlen(buf));
 
-    //get server IP address
-    if (getaddrinfo(hostnamep, NULL, NULL, &ai) != 0) {
-    	printf("failed to get the address info\n");
-    }
+    /* edited to check for headers we don't want to be sent, will send to origin server */
+    read_requesthdrs(&rio, clientfd);
+
+    // TODO: proxy read message from origin server
+    // TODO: send message back to client
+    // TODO: put stuff in the log
+
+    Free(buf);
+    Free(temp_buf);
+
+    /* after everything is functional */
+    // TODO: fix the memory allocation in buffer - do realloc and store all the headers in one buf
+     
+} // end doit
 
 
-    	
-    printf("2\n");
-     /*
+/*
+ * Requires:
+ *   hostname points to a string representing a host name, and port in an
+ *   integer representing a TCP port number.
+ *
+ * Effects:
+ *   Opens a TCP connection to the server at <hostname, port> and returns a
+ *   file descriptor ready for reading and writing.  Returns -1 and sets
+ *   errno on a Unix error.  Returns -2 on a DNS (getaddrinfo) error.
+ */
+static int
+open_client(char *hostname, int port)
+{
+	struct sockaddr_in serveraddr;
+	struct addrinfo *ai;
+	int clientfd;
+
+	// Set clientfd to a newly created stream socket.
+	// REPLACE THIS.
+	clientfd = socket(AF_INET, SOCK_STREAM, 0);
+
+	// Use getaddrinfo() to get the server's IP address.
+	getaddrinfo(hostname, NULL, NULL, &ai);
+
+	/*
 	 * Set the address of serveraddr to be server's IP address and port.
 	 * Be careful to ensure that the IP address and port are in network
 	 * byte order.
 	 */
 	memset(&serveraddr, 0, sizeof(serveraddr));
-	printf("3\n");
 	serveraddr.sin_family = AF_INET;
-	printf("4\n");
-	// FILL THIS IN.
-	serveraddr.sin_port = htons(*portp);
-	printf("5\n");
-	serveraddr.sin_addr = (((struct sockaddr_in *)(ai->ai_addr))->sin_addr);
-	//serveraddr.sin_addr.s_addr = ntohs((((struct sockaddr_in *)(ai->ai_addr))->sin_addr).s_addr);
-
-	/* should we be bit flipping this value here or naw??*/
-
-    printf("6\n");
-
-	//serveraddr.sin_port = htons(portp);
+	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
+	serveraddr.sin_port = htons(port);
 
 	// Establish a connection to the server with connect().
-	// FILL THIS IN.
-	connect(serverfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
-    printf("7\n");
+	connect(clientfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
+
+	return (clientfd);
+
+}
 
 
-
-    /* now that server connection has opened, write buf value to server*/
-
-    /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
-    rio_writen(serverfd, buf, strlen(buf));
-    printf("%s\n", buf);
-
-    
-    
-    /* Read headers into head buf*/
-     
-     //THIS LOOP IS WRITTEN POORLY
-    //headbuf = (char*) calloc(MAXLINE, sizeof(char));
-     while(strcmp(headbuf, "\r\n")) {
-     	//change size of buff to allow full line to be written in ...should we change buff here to become a pointer??
-     	printf("%s\n", headbuf);
-     	/*  remove  any inappropriate connection types*/
-     	//CORRECT way to write these connection headers???
-     	if(strstr(headbuf, "Connection: keep-alive") != NULL) {
-     		//write over the contents written here, do not extend buffer size further
-     		continue;
-    	
-		}
-		if(strstr(headbuf, "Connection: connection") != NULL) {
-     		//write over the contents written here, do not extend buffer size further
-     		continue;
-    	
-		}
-		if(strstr(headbuf, "Connection: proxy-connection") != NULL) {
-     		//write over the contents written here, do not extend buffer size further
-     		continue;
-    	
-		}
-
-
-        Rio_readlineb(&rio, headbuf, MAXLINE);
-
-
-        printf("%s", headbuf);
-        /* this should actually be writing to the server fd, not the client fd, we need to open a connection to the server here like is done in echoclient*/
-        /* later tho we'll want to write back to the client fd*/
-        rio_writen(serverfd, headbuf, strlen(buf));
-        //write this information to the server
-        
-
-        
-
-    }
-
-    
-
-
-    //concatenate buf and headbuf...is this neccesary if we write the info as we go
-    //strcat(buf, headbuf);
-    
-
-
-     
-     //printf("%s", buf);
-     //would we check here to make sure that the method is not keep-alive? 
-
-     //make headbuf, concatenate to buf, rio_init and write both to the server
-     
-
-
-
-
-     
-
-     read_requesthdrs(&rio);
-
-     /* Parse URI from GET request */
-     
-
-     if (stat(filename, &sbuf) < 0) {
-        client_error(fd, filename, 404, "File Not found",
-        "Tiny couldn’t find this file");
-        return;
-     }
-
-     
-}// end doit
 
 /*
  * read_requesthdrs - read and parse HTTP request headers
  */
-void read_requesthdrs(rio_t *rp)
+void read_requesthdrs(rio_t *rp, int clientfd)
 {
-    char buf[MAXLINE];
+    //need to store the headers
+    //read the headers one by one and decide which ones to drop
+    //at the end, we rebuild the request
+    //malloc and realloc as needed - need to do same thing as first buf
+    //char buf[MAXLINE];
+    char *buf = (char *) Malloc(MAXLINE * sizeof(char));
+    char *temp_buf = (char *) Malloc(MAXLINE * sizeof(char));
 
-    Rio_readlineb(rp, buf, MAXLINE);
-    while(strcmp(buf, "\r\n")) {
-        Rio_readlineb(rp, buf, MAXLINE);
-        printf("%s", buf);
+    buf = "";
+
+    while(!strcmp(buf, "\r\n")) {
+
+         //Rio_readlineb(rp, buf, MAXLINE);
+
+//        if(strstr(buf, "Connection: keep-alive") != NULL) {
+//            continue;
+//
+//        }
+//        if(strstr(buf, "Connection: connection") != NULL) {
+//            continue;
+//
+//        }
+//        if(strstr(buf, "Connection: proxy-connection") != NULL) {
+//            continue;
+//        }
+        if(strstr(buf, "Connection: proxy-connection") == NULL &&
+           strstr(buf, "Connection: connection") == NULL &&
+           strstr(buf, "Connection: keep-alive") == NULL &&
+           !strcmp(buf, "")) {
+
+            printf("Sending the header: %s", buf);
+            rio_writen(clientfd, buf, strlen(buf));
+           }
+
+        while(!strstr(buf, "\r\n")) {
+                    //buf = (char*) realloc(buf, ((count + 1) * MAX));
+                    //buf_extended = (char*) realloc(buf_extended, (count * MAX));
+            Rio_readlineb(&rio, ((temp_buf )), MAXLINE);
+            strcat(buf, temp_buf);
+                     //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
+            //                 printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
+                     //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
+             //        count += 1;
+                     //printf("Count is %d\n", count);
+        } //reads in the next header
     }
 
     return;
@@ -362,9 +317,12 @@ parse_uri(const char *uri, char **hostnamep, char **portp, char **pathnamep)
 {
 	const char *pathname_begin, *port_begin, *port_end;
 	printf("in parse uri\n");
-	//printf("in parse uri3\n");
-	if (strncasecmp(uri, "http://", 7) != 0)
-		return (-1);
+	printf("the uri is: %s\n", uri);
+	if (strncasecmp(uri, "http://", 7) != 0) {
+	    printf("invalid http starting for uri!!!\n");
+	    return (-1);
+	}
+
 	printf("in parse uri2\n");
 	printf("The uri is: %s\n", uri);
 	printf("Won't print\n");
@@ -473,7 +431,8 @@ create_log_entry(const struct sockaddr_in *sockaddr, const char *uri, int size)
 	//Free();
 
     //TODO: free the memory used to store the string
-    //TODO: put newline at the end of the returned string
+    //TODO: put newline at the end of the returned string - DONE
+    strcat(log_str, "\n");
 	return (log_str);
 }
 
@@ -533,3 +492,22 @@ client_error(int fd, const char *cause, int err_num, const char *short_msg,
 // Prevent "unused function" and "unused variable" warnings.
 static const void *dummy_ref[] = { client_error, create_log_entry, dummy_ref,
     parse_uri };
+
+    //TODO: Remove this extra commented code before submitting
+
+    //THIS CODE CAME FROM DOIT ++++++++++++++++++++++++++++++++++
+     //Rio_readlineb(&rio, buf , MAX);
+
+     //printf("Maxline is %d\n", MAXLINE);
+     /*while(strcmp(buf, "\r\n")) {
+     	buf_extended = (char*) realloc(buf_extended, (count * MAX));
+
+     	//Rio_readlineb(&rio, ((buf )), MAX);
+        Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
+        strcat(buf_extended, buf);
+        printf("bufis : %s and is size %d\n", buf, (int) strlen(buf));
+        printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
+        count += 1;
+        printf("Count is %d\n", count);
+    }*/
+    //DOIT++++++++++++++++++++++++++++++++++++++++++++++++++++++
