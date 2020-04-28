@@ -123,8 +123,8 @@ void doit(int fd)
 	 //struct addrinfo *ai;
      //char buf[MAXLINE];
      //need to check sizes of possible bufs - might actually need to realloc
-     char *buf = (char *) Malloc(MAXLINE * sizeof(char));
-     char *temp_buf= (char *) Malloc(MAXLINE * sizeof(char));
+     char *buf = calloc(MAXLINE, sizeof(char));
+     char *temp_buf= calloc(MAXLINE, sizeof(char));
      //char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -175,13 +175,14 @@ void doit(int fd)
     printf("Port is: %s\n", portp);
     printf("Pathname is: %s\n", pathnamep);
 
-    clientfd = open_client(hostnamep, *portp);
+    clientfd = open_client(hostnamep, atoi(portp));
 
     // writes first line of request to the origin server
     rio_writen(clientfd, buf, strlen(buf));
 
     if (strstr(version, "1.1") != NULL) { // it's version 1.1
             // TODO: fill in the difference, which is to send connection: closed in headers
+            printf("HAHA it's version 1.1\n");
             rio_writen(clientfd, "Connection: closed", strlen("Connection: closed"));
         }
 
@@ -193,13 +194,17 @@ void doit(int fd)
     rio_t rio_client;
     // TODO: proxy read message from origin server
     Rio_readinitb(&rio_client, clientfd);
+    int length = 0;
+    while((length = Rio_readlineb(&rio_client, client_buf, strlen(client_buf))) > 0) {
+        Rio_writen(fd, client_buf, length);
 
-    Rio_readlineb(&rio_client, client_buf, strlen(client_buf));
+    }
+   // Rio_readlineb(&rio_client, client_buf, strlen(client_buf));
 
     // TODO: send message back to client
-    Rio_writen(fd, client_buf, strlen(client_buf));
+   // Rio_writen(fd, client_buf, strlen(client_buf));
     // TODO: put stuff in the log
-    
+
     Close(clientfd);
 
     Free(buf);
@@ -207,6 +212,9 @@ void doit(int fd)
 
     /* after everything is functional */
     // TODO: fix the memory allocation in buffer - do realloc and store all the headers in one buf
+
+    //we're doing the same thing twice, and it's interfereing
+    //in the doit, we're populating the buffer, then do it again in readrequest headers
      
 } // end doit
 
@@ -224,6 +232,7 @@ void doit(int fd)
 static int
 open_client(char *hostname, int port)
 {
+    printf("Starting to open client now!\n");
 	struct sockaddr_in serveraddr;
 	struct addrinfo *ai;
 	int clientfd;
@@ -232,21 +241,26 @@ open_client(char *hostname, int port)
 	// REPLACE THIS.
 	clientfd = socket(AF_INET, SOCK_STREAM, 0);
 
+	printf("OPENED the SOCKET\n");
+
 	// Use getaddrinfo() to get the server's IP address.
 	getaddrinfo(hostname, NULL, NULL, &ai);
-
+    printf("got the ADDRESS info\n");
 	/*
 	 * Set the address of serveraddr to be server's IP address and port.
 	 * Be careful to ensure that the IP address and port are in network
 	 * byte order.
 	 */
 	memset(&serveraddr, 0, sizeof(serveraddr));
+	printf("SET THE MEMORY ASIDE FOR SERVERADDR\n");
 	serveraddr.sin_family = AF_INET;
 	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
 	serveraddr.sin_port = htons(port);
 
+    printf("FINISHED ASSIGNING SERVERADDRS struct thingys\n");
 	// Establish a connection to the server with connect().
 	connect(clientfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
+	printf("CONNECTED TO CLIENT File Descriptor\n");
 
 	return (clientfd);
 
@@ -264,12 +278,14 @@ void read_requesthdrs(rio_t *rp, int clientfd)
     //at the end, we rebuild the request
     //malloc and realloc as needed - need to do same thing as first buf
     //char buf[MAXLINE];
-    char *buf = (char *) Malloc(MAXLINE * sizeof(char));
-    char *temp_buf = (char *) Malloc(MAXLINE * sizeof(char));
 
-    buf = "";
+    printf("Starting read request headers function!!\n");
+    char *buf = calloc(MAXLINE, sizeof(char));
+    char *temp_buf = calloc(MAXLINE, sizeof(char));
 
-    while(!strcmp(buf, "\r\n")) {
+    //strcmp returns 0 if the strings are identical
+    while(strcmp(buf, "\r\n") != 0) {
+        printf("Going into a round of the outer while loop!\n");
 
          //Rio_readlineb(rp, buf, MAXLINE);
 
@@ -289,11 +305,12 @@ void read_requesthdrs(rio_t *rp, int clientfd)
            strstr(buf, "Connection: keep-alive") == NULL &&
            !strcmp(buf, "")) {
 
-            printf("Sending the header: %s", buf);
+            printf("Sending the header: %s\n", buf);
             rio_writen(clientfd, buf, strlen(buf));
            }
 
         while(!strstr(buf, "\r\n")) {
+            printf("going into the INNER while loop\n");
                     //buf = (char*) realloc(buf, ((count + 1) * MAX));
                     //buf_extended = (char*) realloc(buf_extended, (count * MAX));
             Rio_readlineb(rp, ((temp_buf )), MAXLINE);
