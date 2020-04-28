@@ -163,9 +163,7 @@ void doit(int fd)
          return;
     }
 
-    if (strstr(version, "1.1") != NULL) { // it's version 1.1\
-        // TODO: fill in the difference, which is to send connection: closed in headers
-    }
+
 
      /* FREEE STRINGS after completed use */
      	
@@ -182,10 +180,18 @@ void doit(int fd)
     // writes first line of request to the origin server
     rio_writen(clientfd, buf, strlen(buf));
 
+    if (strstr(version, "1.1") != NULL) { // it's version 1.1\
+            // TODO: fill in the difference, which is to send connection: closed in headers
+            rio_writen(clientfd, "Connection: closed", strlen("Connection: closed"));
+        }
+
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, clientfd);
 
+    /*Should have sent everything we needed to send (request) from proxy to origin server*/
+
     // TODO: proxy read message from origin server
+
     // TODO: send message back to client
     // TODO: put stuff in the log
 
