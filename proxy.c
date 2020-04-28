@@ -141,7 +141,7 @@ void doit(int fd)
      Rio_readinitb(&rio, fd);
 
      //goes through the first line and gets the line while there are still characters to get
-//     int count = 1;
+     int count = 1;
      while(!strstr(buf, "\r\n")) {
      	//buf = (char*) realloc(buf, ((count + 1) * MAX));
      	//buf_extended = (char*) realloc(buf_extended, (count * MAX));
@@ -150,7 +150,7 @@ void doit(int fd)
         //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
         printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
         //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-//        count += 1;
+        count += 1;
         //printf("Count is %d\n", count);
      }
 
@@ -180,7 +180,7 @@ void doit(int fd)
     // writes first line of request to the origin server
     rio_writen(clientfd, buf, strlen(buf));
 
-    if (strstr(version, "1.1") != NULL) { // it's version 1.1\
+    if (strstr(version, "1.1") != NULL) { // it's version 1.1
             // TODO: fill in the difference, which is to send connection: closed in headers
             rio_writen(clientfd, "Connection: closed", strlen("Connection: closed"));
         }
@@ -189,11 +189,18 @@ void doit(int fd)
     read_requesthdrs(&rio, clientfd);
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
-
+    char client_buf[MAXLINE];
+    rio_t rio_client;
     // TODO: proxy read message from origin server
+    Rio_readinitb(&rio_client, clientfd);
+
+    Rio_readlineb(&rio_client, client_buf, strlen(client_buf));
 
     // TODO: send message back to client
+    Rio_writen(fd, client_buf, strlen(client_buf));
     // TODO: put stuff in the log
+    
+    Close(clientfd);
 
     Free(buf);
     Free(temp_buf);
@@ -289,7 +296,7 @@ void read_requesthdrs(rio_t *rp, int clientfd)
         while(!strstr(buf, "\r\n")) {
                     //buf = (char*) realloc(buf, ((count + 1) * MAX));
                     //buf_extended = (char*) realloc(buf_extended, (count * MAX));
-            Rio_readlineb(&rio, ((temp_buf )), MAXLINE);
+            Rio_readlineb(rp, ((temp_buf )), MAXLINE);
             strcat(buf, temp_buf);
                      //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
             //                 printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
