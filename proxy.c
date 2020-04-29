@@ -280,11 +280,15 @@ void read_requesthdrs(rio_t *rp, int clientfd)
     //char buf[MAXLINE];
 
     printf("Starting read request headers function!!\n");
-    char *buf = calloc(MAXLINE, sizeof(char));
+    /*char *buf = calloc(MAXLINE, sizeof(char));
+    char *temp_buf = calloc(MAXLINE, sizeof(char));*/
+    char *buf = calloc(MAXLINE, 40 *sizeof(char));
     char *temp_buf = calloc(MAXLINE, sizeof(char));
 
     //strcmp returns 0 if the strings are identical
-    while(strcmp(buf, "\r\n") != 0) {
+    Rio_readlineb(rp, (temp_buf ), MAXLINE);
+            printf("finished reading once\n");
+    while(strcmp(temp_buf, "\r\n") != 0) {
         printf("Going into a round of the outer while loop!\n");
 
          //Rio_readlineb(rp, buf, MAXLINE);
@@ -300,28 +304,52 @@ void read_requesthdrs(rio_t *rp, int clientfd)
 //        if(strstr(buf, "Connection: proxy-connection") != NULL) {
 //            continue;
 //        }
-        if(strstr(buf, "Connection: proxy-connection") == NULL &&
-           strstr(buf, "Connection: connection") == NULL &&
-           strstr(buf, "Connection: keep-alive") == NULL &&
-           !strcmp(buf, "")) {
-
-            printf("Sending the header: %s\n", buf);
-            rio_writen(clientfd, buf, strlen(buf));
-           }
-
-        while(!strstr(buf, "\r\n")) {
+        temp_buf = calloc(MAXLINE, sizeof(char));
+        int count = 1;
+        while(!strstr(temp_buf, "\r\n")) {
+        	//TODO: ask whether previous values tempbuf 
+        	//temp_buf = calloc(4, sizeof(char));
             printf("going into the INNER while loop\n");
                     //buf = (char*) realloc(buf, ((count + 1) * MAX));
                     //buf_extended = (char*) realloc(buf_extended, (count * MAX));
-            Rio_readlineb(rp, ((temp_buf )), MAXLINE);
-            strcat(buf, temp_buf);
+            printf("going into the INNER while loop2\n");
+            //Rio_readlineb(rp, ((temp_buf )), MAXLINE);
+            Rio_readlineb(rp, (temp_buf ), MAXLINE);
+            printf("finished reading\n");
+
+           if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
+           strstr(temp_buf, "Connection: connection") == NULL &&
+           strstr(temp_buf, "Connection: keep-alive") == NULL &&
+           strcmp(temp_buf, "") != 0) {
+
+            printf("Sending the header: %s\n", buf);
+        	printf("This is the buf BEFORE concatenating: %s\n", buf);
+        	strcat(buf, temp_buf);	
+
+            //rio_writen(clientfd, buf, strlen(buf));
+        	}
+
+            
+            printf("finished concat\n");
+            //view the headbuf
+            printf("This is the temp buf: %s\n", temp_buf);
+            printf("This is the buf: %s\n", buf);
+            Free(temp_buf);
+
+
                      //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
             //                 printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
                      //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
              //        count += 1;
                      //printf("Count is %d\n", count);
+        printf("Inner loop count is %d\n", count);
+        count += 1;
         } //reads in the next header
     }
+    rio_writen(clientfd, buf, strlen(buf));
+    Free(buf);
+    Free(temp_buf);
+    printf("Finished writing to the server\n");
 
     return;
 }
