@@ -183,7 +183,7 @@ void doit(int fd)
     if (strstr(version, "1.1") != NULL) { // it's version 1.1
             // TODO: fill in the difference, which is to send connection: closed in headers
             printf("HAHA it's version 1.1\n");
-            rio_writen(clientfd, "Connection: closed", strlen("Connection: closed"));
+            rio_writen(clientfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
         }
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
@@ -291,20 +291,7 @@ void read_requesthdrs(rio_t *rp, int clientfd)
     while(strcmp(temp_buf, "\r\n") != 0) {
         printf("Going into a round of the outer while loop!\n");
 
-         //Rio_readlineb(rp, buf, MAXLINE);
-
-//        if(strstr(buf, "Connection: keep-alive") != NULL) {
-//            continue;
-//
-//        }
-//        if(strstr(buf, "Connection: connection") != NULL) {
-//            continue;
-//
-//        }
-//        if(strstr(buf, "Connection: proxy-connection") != NULL) {
-//            continue;
-//        }
-        temp_buf = calloc(MAXLINE, sizeof(char));
+       // temp_buf = calloc(MAXLINE, sizeof(char));
         int count = 1;
         while(!strstr(temp_buf, "\r\n")) {
         	//TODO: ask whether previous values tempbuf 
@@ -322,19 +309,24 @@ void read_requesthdrs(rio_t *rp, int clientfd)
            strstr(temp_buf, "Connection: keep-alive") == NULL &&
            strcmp(temp_buf, "") != 0) {
 
-            printf("Sending the header: %s\n", buf);
-        	printf("This is the buf BEFORE concatenating: %s\n", buf);
-        	strcat(buf, temp_buf);	
+                printf("Sending the header: %s\n", buf);
+                printf("This is the buf BEFORE concatenating: %s\n", buf);
+                if(sizeof(buf) + sizeof(temp_buf) <= MAXLINE) {
+                    strcat(buf, temp_buf);
 
-            //rio_writen(clientfd, buf, strlen(buf));
+                } else {
+                    printf("concatenating temp buf requires more memory to be allocated to buf -> realloc happening\n");
+                    buf = realloc(buf, sizeof(buf) + MAXLINE);
+                    strcat(buf, temp_buf);
+                }
+                printf("This is the buf after concatenating: %s\n", buf);
+
         	}
-
-            
             printf("finished concat\n");
             //view the headbuf
             printf("This is the temp buf: %s\n", temp_buf);
             printf("This is the buf: %s\n", buf);
-            Free(temp_buf);
+          //  Free(temp_buf);
 
 
                      //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
@@ -346,6 +338,7 @@ void read_requesthdrs(rio_t *rp, int clientfd)
         count += 1;
         } //reads in the next header
     }
+    
     rio_writen(clientfd, buf, strlen(buf));
     Free(buf);
     Free(temp_buf);
