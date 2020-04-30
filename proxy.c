@@ -117,49 +117,71 @@ void doit(int fd)
 {
      printf("STARTING DOIT FUNCTION!!!\n");
      
-     int clientfd;
+//     int clientfd;
      //struct stat sbuf;
      //struct sockaddr_in serveraddr;
 	 //struct addrinfo *ai;
      //char buf[MAXLINE];
      //need to check sizes of possible bufs - might actually need to realloc
-     char *buf = calloc(MAXLINE, sizeof(char));
-     char *temp_buf= calloc(MAXLINE, sizeof(char));
+//     char *buf = calloc(MAXLINE, sizeof(char));
+//     char *temp_buf= calloc(MAXLINE, sizeof(char));
      //char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
-     char *hostnamep, *portp, *pathnamep;
-     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+//     char *hostnamep, *portp, *pathnamep;
+//     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
      //char filename[MAXLINE];
      //char cgiargs[MAXLINE];
-     rio_t rio;
+//     rio_t rio;
 
-    //we want to
+
+
+
+     int clientfd;
+     char *buf = calloc(MAXLINE, sizeof(char));
+     char *temp_buf= calloc(MAXLINE, sizeof(char));
+     char *hostnamep, *portp, *pathnamep;
+     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+     char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
+     rio_t rio, rio_client;
+
+     //initialize memory to 0, cleans out whatever was there previously
+     memset(method, 0, sizeof(method));
+     memset(uri, 0, sizeof(uri));
+     memset(version, 0, sizeof(version));
      
-    printf("Request headers0:\n");
-     /* Read request line and headers */
+    printf("Finished cleaning memory!!!\n");
 
+     /* First, we have to get the FIRST request line and parse it */
 
-     Rio_readinitb(&rio, fd);
+     Rio_readinitb(&rio, fd); //init reader
 
-     //goes through the first line and gets the line while there are still characters to get
-     int count = 1;
-     while(!strstr(buf, "\r\n")) {
-     	//buf = (char*) realloc(buf, ((count + 1) * MAX));
-     	//buf_extended = (char*) realloc(buf_extended, (count * MAX));
-     	Rio_readlineb(&rio, ((temp_buf )), MAXLINE);
-     	strcat(buf, temp_buf);
-        //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
-        printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
-        //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-        count += 1;
-        //printf("Count is %d\n", count);
+     if(!Rio_readlineb(&rio, buf, MAXLINE)) {
+        printf("No request to read! ERROR!\n");
+        return;
      }
+     printf("The first line of request from client is: %s\n", buf);
+
+     //TODO: fix the following implementation
+     /*Version that accounts for lines longer than MAXLINE*/
+     //goes through the first line and gets the line while there are still characters to get
+//     int count = 1;
+//     while(!strstr(buf, "\r\n")) {
+//     	//buf = (char*) realloc(buf, ((count + 1) * MAX));
+//     	//buf_extended = (char*) realloc(buf_extended, (count * MAX));
+//     	Rio_readlineb(&rio, ((temp_buf )), MAXLINE);
+//     	strcat(buf, temp_buf);
+//        //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
+//        printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
+//        //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
+//        count += 1;
+//        //printf("Count is %d\n", count);
+//     }
 
 
      /* Verify that this is a get request*/
     sscanf(buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) {
         client_error(fd, method, 501, "Not implemented",
-        "Tiny does not implement this method");
+        "This proxy server does not implement this method");
          return;
     }
 
@@ -176,26 +198,25 @@ void doit(int fd)
     printf("Pathname is: %s\n", pathnamep);
 
     clientfd = open_client(hostnamep, atoi(portp));
+    Rio_readinitb(&rio_client, clientfd);
 
     // writes first line of request to the origin server
-    rio_writen(clientfd, buf, strlen(buf));
+    Rio_writen(clientfd, buf, strlen(buf));
 
     if (strstr(version, "1.1") != NULL) { // it's version 1.1
-            // TODO: fill in the difference, which is to send connection: closed in headers
-            printf("HAHA it's version 1.1\n");
-            rio_writen(clientfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
-        }
+        Rio_writen(clientfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+    }
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, clientfd);
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
-    char client_buf[MAXLINE];
-    rio_t rio_client;
+
+
     // TODO: proxy read message from origin server
-    Rio_readinitb(&rio_client, clientfd);
     int length = 0;
     while((length = Rio_readlineb(&rio_client, client_buf, strlen(client_buf))) > 0) {
+        printf("Sending the message: %s\n", client_buf);
         Rio_writen(fd, client_buf, length);
 
     }
@@ -273,76 +294,98 @@ open_client(char *hostname, int port)
  */
 void read_requesthdrs(rio_t *rp, int clientfd)
 {
-    //need to store the headers
+//    need to store the headers
     //read the headers one by one and decide which ones to drop
     //at the end, we rebuild the request
     //malloc and realloc as needed - need to do same thing as first buf
     //char buf[MAXLINE];
 
-    printf("Starting read request headers function!!\n");
-    /*char *buf = calloc(MAXLINE, sizeof(char));
-    char *temp_buf = calloc(MAXLINE, sizeof(char));*/
-    char *buf = calloc(MAXLINE, 40 *sizeof(char));
-    char *temp_buf = calloc(MAXLINE, sizeof(char));
+//    printf("Starting read request headers function!!\n");
+//    /*char *buf = calloc(MAXLINE, sizeof(char));
+//    char *temp_buf = calloc(MAXLINE, sizeof(char));*/
+//    char *buf = calloc(MAXLINE, 40 *sizeof(char));
+//    char *temp_buf = calloc(MAXLINE, sizeof(char));
+//
+//    //strcmp returns 0 if the strings are identical
+//    Rio_readlineb(rp, (temp_buf ), MAXLINE);
+//            printf("finished reading once\n");
+//    while(strcmp(temp_buf, "\r\n") != 0) {
+//        printf("Going into a round of the outer while loop!\n");
+//
+//       // temp_buf = calloc(MAXLINE, sizeof(char));
+//        int count = 1;
+//        while(!strstr(temp_buf, "\r\n")) {
+//        	//TODO: ask whether previous values tempbuf
+//        	//temp_buf = calloc(4, sizeof(char));
+//            printf("going into the INNER while loop\n");
+//                    //buf = (char*) realloc(buf, ((count + 1) * MAX));
+//                    //buf_extended = (char*) realloc(buf_extended, (count * MAX));
+//            printf("going into the INNER while loop2\n");
+//            //Rio_readlineb(rp, ((temp_buf )), MAXLINE);
+//            Rio_readlineb(rp, (temp_buf ), MAXLINE);
+//            printf("finished reading\n");
+//
+//           if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
+//           strstr(temp_buf, "Connection: connection") == NULL &&
+//           strstr(temp_buf, "Connection: keep-alive") == NULL &&
+//           strcmp(temp_buf, "") != 0) {
+//
+//                printf("Sending the header: %s\n", buf);
+//                printf("This is the buf BEFORE concatenating: %s\n", buf);
+//                if(sizeof(buf) + sizeof(temp_buf) <= MAXLINE) {
+//                    strcat(buf, temp_buf);
+//
+//                } else {
+//                    printf("concatenating temp buf requires more memory to be allocated to buf -> realloc happening\n");
+//                    buf = realloc(buf, sizeof(buf) + MAXLINE);
+//                    strcat(buf, temp_buf);
+//                }
+//                printf("This is the buf after concatenating: %s\n", buf);
+//
+//        	}
+//            printf("finished concat\n");
+//            //view the headbuf
+//            printf("This is the temp buf: %s\n", temp_buf);
+//            printf("This is the buf: %s\n", buf);
+//          //  Free(temp_buf);
+//
+//
+//                     //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
+//            //                 printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
+//                     //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
+//             //        count += 1;
+//                     //printf("Count is %d\n", count);
+//        printf("Inner loop count is %d\n", count);
+//        count += 1;
+//        } //reads in the next header
+//    }
+//
+//    rio_writen(clientfd, buf, strlen(buf));
+//    Free(buf);
+//    Free(temp_buf);
+//    printf("Finished writing to the server\n");
 
-    //strcmp returns 0 if the strings are identical
-    Rio_readlineb(rp, (temp_buf ), MAXLINE);
-            printf("finished reading once\n");
-    while(strcmp(temp_buf, "\r\n") != 0) {
-        printf("Going into a round of the outer while loop!\n");
 
-       // temp_buf = calloc(MAXLINE, sizeof(char));
-        int count = 1;
-        while(!strstr(temp_buf, "\r\n")) {
-        	//TODO: ask whether previous values tempbuf 
-        	//temp_buf = calloc(4, sizeof(char));
-            printf("going into the INNER while loop\n");
-                    //buf = (char*) realloc(buf, ((count + 1) * MAX));
-                    //buf_extended = (char*) realloc(buf_extended, (count * MAX));
-            printf("going into the INNER while loop2\n");
-            //Rio_readlineb(rp, ((temp_buf )), MAXLINE);
-            Rio_readlineb(rp, (temp_buf ), MAXLINE);
-            printf("finished reading\n");
-
-           if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
-           strstr(temp_buf, "Connection: connection") == NULL &&
-           strstr(temp_buf, "Connection: keep-alive") == NULL &&
-           strcmp(temp_buf, "") != 0) {
-
-                printf("Sending the header: %s\n", buf);
-                printf("This is the buf BEFORE concatenating: %s\n", buf);
-                if(sizeof(buf) + sizeof(temp_buf) <= MAXLINE) {
-                    strcat(buf, temp_buf);
-
-                } else {
-                    printf("concatenating temp buf requires more memory to be allocated to buf -> realloc happening\n");
-                    buf = realloc(buf, sizeof(buf) + MAXLINE);
-                    strcat(buf, temp_buf);
-                }
-                printf("This is the buf after concatenating: %s\n", buf);
-
-        	}
-            printf("finished concat\n");
-            //view the headbuf
-            printf("This is the temp buf: %s\n", temp_buf);
-            printf("This is the buf: %s\n", buf);
-          //  Free(temp_buf);
-
-
-                     //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
-            //                 printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
-                     //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-             //        count += 1;
-                     //printf("Count is %d\n", count);
-        printf("Inner loop count is %d\n", count);
-        count += 1;
-        } //reads in the next header
+    /*An edited version for testing purposes*/
+    char temp_buf[MAXLINE];
+    Rio_readlineb(rp, temp_buf, MAXLINE);
+    if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
+    strstr(temp_buf, "Connection: connection") == NULL &&
+    strstr(temp_buf, "Connection: keep-alive") == NULL &&
+    strcmp(temp_buf, "\r\n")) {
+        printf("SENDING THE FIRST HEADER\n");
+        printf("%s", temp_buf);
+        Rio_writen(clientfd, temp_buf, strlen(temp_buf));
     }
-    
-    rio_writen(clientfd, buf, strlen(buf));
-    Free(buf);
-    Free(temp_buf);
-    printf("Finished writing to the server\n");
+    while(strcmp(temp_buf, "\r\n")) {
+        Rio_readlineb(rp, temp_buf, MAXLINE);
+        if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
+            strstr(temp_buf, "Connection: connection") == NULL &&
+            strstr(temp_buf, "Connection: keep-alive") == NULL &&
+            strcmp(temp_buf, "\r\n")) {
+                Rio_writen(clientfd, temp_buf, strlen(temp_buf));
+            }
+    }
 
     return;
 }
