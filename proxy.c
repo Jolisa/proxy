@@ -1,4 +1,4 @@
-
+/*
  * COMP 321 Project 6: Web Proxy
  *
  * This program implements a multithreaded HTTP proxy.
@@ -33,6 +33,7 @@ static int	open_client(char *hostname, int port);
 //void serve_static(int fd, char *filename, int filesize);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
 //void get_filetype(char *filename, char *filetype);
+struct sockaddr_in serveraddr;
 
 
 //what else do we need to add?
@@ -136,6 +137,7 @@ void doit(int fd)
 
      int clientfd;
      char *buf = calloc(MAXLINE, sizeof(char));
+     char *log_data = calloc(MAXLINE, sizeof(char));
      char *temp_buf= calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -184,6 +186,8 @@ void doit(int fd)
          return;
     }
 
+    /* TODO:check 1.0 or 1.1*/
+
 
 
      /* FREEE STRINGS after completed use */
@@ -197,34 +201,67 @@ void doit(int fd)
     printf("Pathname is: %s\n", pathnamep);
 
     clientfd = open_client(hostnamep, atoi(portp));
+    /* error check for client file descriptor*/
+    if (clientfd == -1) {
+		unix_error("open_clientfd Unix error");
+	} else if (clientfd == -2) {
+		dns_error("open_clientfd DNS error");
+	}
     Rio_readinitb(&rio_client, clientfd);
 
     // writes first line of request to the origin server
     Rio_writen(clientfd, buf, strlen(buf));
 
+    printf("Buf is %s \n", buf);
+
+    /* TODO: add connection closed to buff and send*/
+
     if (strstr(version, "1.1") != NULL) { // it's version 1.1
         Rio_writen(clientfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+    	printf("Connection closed header sent.\n");
     }
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, clientfd);
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
+    printf("finished FINALLY writing headers 2\n");
 
 
-    // TODO: proxy read message from origin server
-    int length = 0;
-    while((length = Rio_readlineb(&rio_client, client_buf, strlen(client_buf))) > 0) {
+
+
+
+
+
+
+
+
+
+
+    // TODO: proxy read message from origin server and writes back to client
+    int length = 1;
+    printf("Writing to client soon\n");
+    //length = rio_readlineb(&rio_client, client_buf, MAXLINE);
+    printf("Writing to client now\n");
+    //printf("Client buf is %s \n", client_buf);
+    int size = 0;
+    while((length = rio_readlineb(&rio_client, client_buf, MAXLINE)) > 0) {
+    	printf("Entered loop for writing to server\n");
         printf("Sending the message: %s\n", client_buf);
         Rio_writen(fd, client_buf, length);
+        size += length;
 
     }
+    log_data = create_log_entry(&serveraddr, uri, size);
+
+    printf("size of log data is %d \n", size);
+    printf("Log data is : %s\n", log_data);
    // Rio_readlineb(&rio_client, client_buf, strlen(client_buf));
 
     // TODO: send message back to client
    // Rio_writen(fd, client_buf, strlen(client_buf));
     // TODO: put stuff in the log
-
+    /*. CLOSE. CLIENT FD*/
     Close(clientfd);
 
     Free(buf);
@@ -376,16 +413,17 @@ void read_requesthdrs(rio_t *rp, int clientfd)
         printf("%s", temp_buf);
         Rio_writen(clientfd, temp_buf, strlen(temp_buf));
     }
-    while(strcmp(temp_buf, "\r\n")) {
+    while(strcmp(temp_buf, "\r\n") != 0) {
         Rio_readlineb(rp, temp_buf, MAXLINE);
         if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
             strstr(temp_buf, "Connection: connection") == NULL &&
             strstr(temp_buf, "Connection: keep-alive") == NULL &&
             strcmp(temp_buf, "\r\n")) {
                 Rio_writen(clientfd, temp_buf, strlen(temp_buf));
+            	printf("Sending the header of %s \n", temp_buf);
             }
     }
-
+    printf("finished writing headers\n");
     return;
 }
 
