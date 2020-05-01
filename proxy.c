@@ -80,35 +80,7 @@ main(int argc, char **argv)
 }
 
 
-/*
- * parse_uri_static - parse URI into filename and CGI args
- *             return 0 if dynamic content, 1 if static
- */
-int parse_uri_static(char *uri, char *filename, char *cgiargs) 
-{
-    char *ptr;
 
-    if (!strstr(uri, "cgi-bin")) {  /* Static content */
-	strcpy(cgiargs, "");                            
-	strcpy(filename, ".");                          
-	strcat(filename, uri);                          
-	if (uri[strlen(uri)-1] == '/')                  
-	    strcat(filename, "home.html");              
-	return 1;
-    }
-    else {  /* Dynamic content */                       
-	ptr = index(uri, '?');                          
-	if (ptr) {
-	    strcpy(cgiargs, ptr+1);
-	    *ptr = '\0';
-	}
-	else 
-	    strcpy(cgiargs, "");                        
-	strcpy(filename, ".");                          
-	strcat(filename, uri);                          
-	return 0;
-    }
-}
 /*
  * doit - handle one HTTP request/response transaction
  */
@@ -135,14 +107,14 @@ void doit(int fd)
 
 
 
-     int clientfd;
+     int serverfd;
      char *buf = calloc(MAXLINE, sizeof(char));
      char *log_data = calloc(MAXLINE, sizeof(char));
      char *temp_buf= calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
      char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
-     rio_t rio, rio_client;
+     rio_t rio, rio_server;
 
      //initialize memory to 0, cleans out whatever was there previously
      memset(method, 0, sizeof(method));
@@ -186,6 +158,12 @@ void doit(int fd)
          return;
     }
 
+    if(strstr(version, "1.1") == NULL && strstr(version, "1.0") == NULL) {
+        client_error(fd, version, 500, "Not supported",
+        "This proxy server does not support this version");
+        return;
+    }
+
     /* TODO:check 1.0 or 1.1*/
 
 
@@ -197,45 +175,35 @@ void doit(int fd)
 
     parse_uri(uri, &hostnamep, &portp, &pathnamep);
     printf("Hostname is: %s\n", hostnamep);
-    printf("Port is: %s\n", portp);
+    printf("Port is: %s and in int form: %d\n", portp, atoi(portp));
     printf("Pathname is: %s\n", pathnamep);
 
-    clientfd = open_client(hostnamep, atoi(portp));
+    serverfd = open_client(hostnamep, atoi(portp));
     /* error check for client file descriptor*/
-    if (clientfd == -1) {
+    if (serverfd == -1) {
 		unix_error("open_clientfd Unix error");
-	} else if (clientfd == -2) {
+	} else if (serverfd == -2) {
 		dns_error("open_clientfd DNS error");
 	}
-    Rio_readinitb(&rio_client, clientfd);
+    Rio_readinitb(&rio_server, serverfd);
 
     // writes first line of request to the origin server
-    Rio_writen(clientfd, buf, strlen(buf));
+    Rio_writen(serverfd, buf, strlen(buf));
 
     printf("Buf is %s \n", buf);
 
     /* TODO: add connection closed to buff and send*/
 
     if (strstr(version, "1.1") != NULL) { // it's version 1.1
-        Rio_writen(clientfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+        Rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
     	printf("Connection closed header sent.\n");
     }
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
-    read_requesthdrs(&rio, clientfd);
+    read_requesthdrs(&rio, serverfd);
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
     printf("finished FINALLY writing headers 2\n");
-
-
-
-
-
-
-
-
-
-
 
 
     // TODO: proxy read message from origin server and writes back to client
@@ -245,7 +213,7 @@ void doit(int fd)
     printf("Writing to client now\n");
     //printf("Client buf is %s \n", client_buf);
     int size = 0;
-    while((length = rio_readlineb(&rio_client, client_buf, MAXLINE)) > 0) {
+    while((length = rio_readlineb(&rio_server, client_buf, MAXLINE)) > 0) {
     	printf("Entered loop for writing to server\n");
         printf("Sending the message: %s\n", client_buf);
         Rio_writen(fd, client_buf, length);
@@ -262,7 +230,7 @@ void doit(int fd)
    // Rio_writen(fd, client_buf, strlen(client_buf));
     // TODO: put stuff in the log
     /*. CLOSE. CLIENT FD*/
-    Close(clientfd);
+    Close(serverfd);
 
     Free(buf);
     Free(temp_buf);
@@ -313,6 +281,7 @@ open_client(char *hostname, int port)
 	serveraddr.sin_family = AF_INET;
 	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
 	serveraddr.sin_port = htons(port);
+	printf("The port is %d\n", serveraddr.sin_port);
 
     printf("FINISHED ASSIGNING SERVERADDRS struct thingys\n");
 	// Establish a connection to the server with connect().
