@@ -1,4 +1,4 @@
-/*
+
  * COMP 321 Project 6: Web Proxy
  *
  * This program implements a multithreaded HTTP proxy.
@@ -38,7 +38,6 @@ static int	open_client(char *hostname, int port);
 //what else do we need to add?
 /*
 doit
-
 */
 /* 
  * Requires:
@@ -595,7 +594,6 @@ static const void *dummy_ref[] = { client_error, create_log_entry, dummy_ref,
      //printf("Maxline is %d\n", MAXLINE);
      /*while(strcmp(buf, "\r\n")) {
      	buf_extended = (char*) realloc(buf_extended, (count * MAX));
-
      	//Rio_readlineb(&rio, ((buf )), MAX);
         Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
         strcat(buf_extended, buf);
