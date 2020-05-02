@@ -170,7 +170,7 @@ void doit(int fd)
 
      /* FREEE STRINGS after completed use */
      	
-     printf("About to parse uri:\n");
+    printf("About to parse uri:\n");
     printf("Uri is: %s\n", uri);
 
     parse_uri(uri, &hostnamep, &portp, &pathnamep);
@@ -192,18 +192,23 @@ void doit(int fd)
 
     printf("Buf is %s \n", buf);
 
-    /* TODO: add connection closed to buff and send*/
-
-    if (strstr(version, "1.1") != NULL) { // it's version 1.1
-        Rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
-    	printf("Connection closed header sent.\n");
-    }
+    
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, serverfd);
 
+    /*  add connection closed to buff and send*/
+
+    if (strstr(version, "1.1") != NULL) { // it's version 1.1
+        Rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+        printf("Connection closed header sent.\n");
+    }
+
+    /* Write empty line to server to signal end of headers*/
+    Rio_writen(serverfd, "\r\n", strlen("\r\n"));
+
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
-    printf("finished FINALLY writing headers 2\n");
+    printf("finished FINALLY writing headers 2 and sent a new empty line\n");
 
 
     // TODO: proxy read message from origin server and writes back to client
