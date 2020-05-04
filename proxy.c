@@ -20,6 +20,8 @@
 //#include "cis307.h"
 #include "csapp.h"
 
+FILE *proxy_log;
+
 static void	client_error(int fd, const char *cause, int err_num, 
 		    const char *short_msg, const char *long_msg);
 static char *create_log_entry(const struct sockaddr_in *sockaddr,
@@ -57,11 +59,21 @@ main(int argc, char **argv)
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
 
+    char *log_name = "proxy.log";
+
 	/* Check the arguments. */
 	if (argc != 2) {
 		fprintf(stderr, "Usage: %s <port number>\n", argv[0]);
 		exit(0);
 	}
+
+	//open log file
+	proxy_log = fopen(log_name, "w");
+	if(proxy_log == NULL) {
+	    fprintf(stderr, "Can't open: %s. \n", log_name);
+	    return(1);
+	}
+
 
 	listenfd = Open_listenfd(argv[1]);
 	//TODO: add threads to the following loop using threads as specified in tiny.c
@@ -76,6 +88,8 @@ main(int argc, char **argv)
 	}// until client closed!
 
 	/* Return success. */
+	fflush(proxy_log);
+	fclose(proxy_log);
 	return (0);
 }
 
@@ -226,6 +240,12 @@ void doit(int fd)
 
     }
     log_data = create_log_entry(&serveraddr, uri, size);
+
+    //fprintf(proxy_log, "%s\n", log_data);
+    fprintf(proxy_log, log_data);
+   // fputs(log_data, proxy_log);
+    fflush(proxy_log);
+
 
     printf("size of log data is %d \n", size);
     printf("Log data is : %s\n", log_data);
