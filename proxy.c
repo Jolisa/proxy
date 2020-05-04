@@ -397,8 +397,15 @@ void read_requesthdrs(rio_t *rp, int clientfd)
 
 
     /*An edited version for testing purposes*/
-    char temp_buf[MAXLINE];
-    Rio_readlineb(rp, temp_buf, MAXLINE);
+    int size = 4;
+    char temp_buf[size];
+//    char buf[MAXLINE];
+//    char single_header[MAXLINE];
+    char *buf = calloc(MAXLINE, sizeof(char));
+    char *single_header = calloc(MAXLINE, sizeof(char));
+
+
+    rio_readlineb(rp, temp_buf, size);
     if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
     strstr(temp_buf, "Connection: connection") == NULL &&
     strstr(temp_buf, "Connection: keep-alive") == NULL &&
@@ -407,16 +414,33 @@ void read_requesthdrs(rio_t *rp, int clientfd)
         printf("%s", temp_buf);
         Rio_writen(clientfd, temp_buf, strlen(temp_buf));
     }
-    while(strcmp(temp_buf, "\r\n") != 0) {
-        Rio_readlineb(rp, temp_buf, MAXLINE);
-        if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
-            strstr(temp_buf, "Connection: connection") == NULL &&
-            strstr(temp_buf, "Connection: keep-alive") == NULL &&
-            strcmp(temp_buf, "\r\n")) {
-                Rio_writen(clientfd, temp_buf, strlen(temp_buf));
-            	printf("Sending the header of %s \n", temp_buf);
+    while(strcmp(single_header, "\r\n") != 0) {
+
+        if(strstr(single_header, "Connection: proxy-connection") == NULL &&
+            strstr(single_header, "Connection: connection") == NULL &&
+            strstr(single_header, "Connection: keep-alive") == NULL &&
+            strcmp(single_header, "\r\n")) {
+                if(strlen(buf) + strlen(single_header) > (sizeof(buf))) {
+                    buf = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+                    strcat(buf, single_header);
+                } else {
+                    strcat(buf, single_header);
+                }
+                printf("Adding the header of %s \n", temp_buf);
             }
+        while(strstr(temp_buf, "\r\n") == NULL) {
+            rio_readlineb(rp, temp_buf, size);
+            if(strlen(single_header) + strlen(temp_buf) > sizeof(single_header)) {
+                single_header = (char *)realloc(single_header, sizeof(single_header) + MAXLINE);
+                strcat(single_header, temp_buf);
+            } else {
+               strcat(single_header, temp_buf);
+            }
+
+        }
     }
+
+    rio_writen(clientfd, buf, strlen(temp_buf));
     printf("finished writing headers\n");
     return;
 }
