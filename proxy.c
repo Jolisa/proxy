@@ -345,8 +345,8 @@ void read_requesthdrs(rio_t *rp, int clientfd)
 //       // temp_buf = calloc(MAXLINE, sizeof(char));
 //        int count = 1;
 //        while(!strstr(temp_buf, "\r\n")) {
-//        	//TODO: ask whether previous values tempbuf
-//        	//temp_buf = calloc(4, sizeof(char));
+//          //TODO: ask whether previous values tempbuf
+//          //temp_buf = calloc(4, sizeof(char));
 //            printf("going into the INNER while loop\n");
 //                    //buf = (char*) realloc(buf, ((count + 1) * MAX));
 //                    //buf_extended = (char*) realloc(buf_extended, (count * MAX));
@@ -372,7 +372,7 @@ void read_requesthdrs(rio_t *rp, int clientfd)
 //                }
 //                printf("This is the buf after concatenating: %s\n", buf);
 //
-//        	}
+//          }
 //            printf("finished concat\n");
 //            //view the headbuf
 //            printf("This is the temp buf: %s\n", temp_buf);
@@ -398,46 +398,86 @@ void read_requesthdrs(rio_t *rp, int clientfd)
 
     /*An edited version for testing purposes*/
     int size = 4;
-    char temp_buf[size];
+    char *temp_buf = calloc(size, sizeof(char));
 //    char buf[MAXLINE];
 //    char single_header[MAXLINE];
     char *buf = calloc(MAXLINE, sizeof(char));
+    printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
     char *single_header = calloc(MAXLINE, sizeof(char));
+    char *new_ptr = calloc(MAXLINE, sizeof(char));
 
 
-    rio_readlineb(rp, temp_buf, size);
-    if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
-    strstr(temp_buf, "Connection: connection") == NULL &&
-    strstr(temp_buf, "Connection: keep-alive") == NULL &&
-    strcmp(temp_buf, "\r\n")) {
-        printf("SENDING THE FIRST HEADER\n");
-        printf("%s", temp_buf);
-        Rio_writen(clientfd, temp_buf, strlen(temp_buf));
+    rio_readnb(rp, temp_buf, size);
+    strcat(single_header, temp_buf);
+    /* create initial line of headers*/
+
+    while(strstr(temp_buf, "\r\n") == NULL) {
+            rio_readnb(rp, temp_buf, size);
+            if((strlen(single_header) + strlen(temp_buf) * sizeof(char)) > sizeof(single_header)) {
+                printf("0: str_len single header is : %d , str_len temp_buf is : %d \n", (int) strlen(single_header), (int) strlen(temp_buf));
+                printf("1: temp_buf is %s\n", temp_buf);
+                printf("2: single_header is %s\n", single_header);
+                new_ptr = (char *)realloc(single_header, sizeof(single_header) + MAXLINE);
+                single_header = new_ptr;
+                strcat(single_header, temp_buf);
+            } else {
+               printf("3: temp_buf is %s\n", temp_buf);
+               printf("4: single_header is %s\n", single_header);
+               strcat(single_header, temp_buf);
+            }
+            printf("IN LOOP 1 \n");
+
     }
+    /* iterate through headers until arriving at a standalone carriage return*/
     while(strcmp(single_header, "\r\n") != 0) {
 
         if(strstr(single_header, "Connection: proxy-connection") == NULL &&
             strstr(single_header, "Connection: connection") == NULL &&
             strstr(single_header, "Connection: keep-alive") == NULL &&
             strcmp(single_header, "\r\n")) {
-                if(strlen(buf) + strlen(single_header) > (sizeof(buf))) {
-                    buf = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+                if((strlen(buf) + strlen(single_header)) * sizeof(char) > (sizeof(buf))) {
+                    printf("0: str_len single header is : %d , str_len buf is : %d \n", (int) strlen(single_header), (int) strlen(buf));
+                    printf("size of buf is %d\n", (int) sizeof(buf));
+                    printf("5: reallocing: single_header is %s\n", single_header);
+                    printf("6: reallocing: buf is %s\n", (buf));
+                    printf("(strlen(buf) + strlen(single_header)) * sizeof(char) > (sizeof(buf) is %d\n", (strlen(buf) + strlen(single_header)) * sizeof(char) > (sizeof(buf)));
+                    new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+                    buf = new_ptr;
                     strcat(buf, single_header);
                 } else {
+                    printf("7: single_header is %s\n", single_header);
+                    printf("8: buf is %s\n", buf);
                     strcat(buf, single_header);
                 }
-                printf("Adding the header of %s \n", temp_buf);
-            }
+                
+                //printf("Adding the header of %s \n", temp_buf);
+
+
+        }
+        memset(single_header, 0, sizeof(*single_header));
+        rio_readnb(rp, temp_buf, size);
+        strcat(single_header, temp_buf);
+        /* iterate through characters until reaching the end of a single header*/    
         while(strstr(temp_buf, "\r\n") == NULL) {
-            rio_readlineb(rp, temp_buf, size);
-            if(strlen(single_header) + strlen(temp_buf) > sizeof(single_header)) {
-                single_header = (char *)realloc(single_header, sizeof(single_header) + MAXLINE);
+            rio_readnb(rp, temp_buf, size);
+            if((strlen(single_header) + strlen(temp_buf)) * sizeof(char) > sizeof(single_header)) {
+                new_ptr = (char *)realloc(single_header, sizeof(single_header) + MAXLINE);
+                single_header = new_ptr;
+                printf("7: reallocing: temp buf is %s \n", temp_buf);
+                printf("8: reallocing: single_header is %s\n", single_header);
                 strcat(single_header, temp_buf);
             } else {
                strcat(single_header, temp_buf);
+               printf("9: temp buf is %s \n", temp_buf);
+               printf("10: single_header is %s\n", single_header);
             }
+                
+        printf("IN LOOP 2 \n");
 
         }
+
+        printf("IN LOOP 3 \n");
+
     }
 
     rio_writen(clientfd, buf, strlen(temp_buf));
