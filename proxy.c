@@ -31,6 +31,7 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, int clientfd);
+void replaceOccurences(char *buf, const char *prevChar, const char *newChar);
 static int	open_client(char *hostname, int port);
 //void serve_static(int fd, char *filename, int filesize);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
@@ -397,92 +398,98 @@ void read_requesthdrs(rio_t *rp, int clientfd)
 
 
     /*An edited version for testing purposes*/
-    int size = 4;
+    int size = 7;
     char *temp_buf = calloc(size, sizeof(char));
+    char * check_buf = calloc(size, sizeof(char));
+    int buf_length;
 //    char buf[MAXLINE];
 //    char single_header[MAXLINE];
     char *buf = calloc(MAXLINE, sizeof(char));
     printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
-    char *single_header = calloc(MAXLINE, sizeof(char));
+    printf("ORIGINAL temp_buf size is %d \n", (int) sizeof(temp_buf));
+    //char *single_header = calloc(MAXLINE, sizeof(char));
     char *new_ptr = calloc(MAXLINE, sizeof(char));
 
 
     rio_readnb(rp, temp_buf, size);
-    strcat(single_header, temp_buf);
+    strcat(buf, temp_buf);
     /* create initial line of headers*/
-
-    while(strstr(temp_buf, "\r\n") == NULL) {
-            rio_readnb(rp, temp_buf, size);
-            if((strlen(single_header) + strlen(temp_buf) * sizeof(char)) > sizeof(single_header)) {
-                printf("0: str_len single header is : %d , str_len temp_buf is : %d \n", (int) strlen(single_header), (int) strlen(temp_buf));
+    
+    while(strcmp(check_buf, "\r\n\r\n") != 0) {
+        Rio_readnb(rp, temp_buf, size);
+        if((strlen(buf) + strlen(temp_buf) * sizeof(char)) > sizeof(buf)) {
+                printf("0: str_len buf is : %d , str_len temp_buf is : %d \n", (int) strlen(buf), (int) strlen(temp_buf));
                 printf("1: temp_buf is %s\n", temp_buf);
-                printf("2: single_header is %s\n", single_header);
-                new_ptr = (char *)realloc(single_header, sizeof(single_header) + MAXLINE);
-                single_header = new_ptr;
-                strcat(single_header, temp_buf);
+                printf("2: buf is %s\n", buf);
+                new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+                buf= new_ptr;
+                strcat(buf, temp_buf);
             } else {
                printf("3: temp_buf is %s\n", temp_buf);
-               printf("4: single_header is %s\n", single_header);
-               strcat(single_header, temp_buf);
+               printf("4: buf is %s\n", buf);
+               strcat(buf, temp_buf);
             }
-            printf("IN LOOP 1 \n");
 
+
+        buf_length = strlen(buf);
+        printf("buf_length is %d\n", buf_length);
+        check_buf = &buf[buf_length - 4];
+        printf("check_buf is %s\n", check_buf);
+        
     }
-    /* iterate through headers until arriving at a standalone carriage return*/
-    while(strcmp(single_header, "\r\n") != 0) {
+    replaceOccurences(buf, "</script>", "");
+    char * oo = calloc(10, sizeof(char));
+    oo = "Hellllooo";
 
-        if(strstr(single_header, "Connection: proxy-connection") == NULL &&
-            strstr(single_header, "Connection: connection") == NULL &&
-            strstr(single_header, "Connection: keep-alive") == NULL &&
-            strcmp(single_header, "\r\n")) {
-                if((strlen(buf) + strlen(single_header)) * sizeof(char) > (sizeof(buf))) {
-                    printf("0: str_len single header is : %d , str_len buf is : %d \n", (int) strlen(single_header), (int) strlen(buf));
-                    printf("size of buf is %d\n", (int) sizeof(buf));
-                    printf("5: reallocing: single_header is %s\n", single_header);
-                    printf("6: reallocing: buf is %s\n", (buf));
-                    printf("(strlen(buf) + strlen(single_header)) * sizeof(char) > (sizeof(buf) is %d\n", (strlen(buf) + strlen(single_header)) * sizeof(char) > (sizeof(buf)));
-                    new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
-                    buf = new_ptr;
-                    strcat(buf, single_header);
-                } else {
-                    printf("7: single_header is %s\n", single_header);
-                    printf("8: buf is %s\n", buf);
-                    strcat(buf, single_header);
-                }
-                
-                //printf("Adding the header of %s \n", temp_buf);
+    //char oo[10] = "Hellllooo";
+    printf("This is oo %s\n", oo);
 
-
-        }
-        memset(single_header, 0, sizeof(*single_header));
-        rio_readnb(rp, temp_buf, size);
-        strcat(single_header, temp_buf);
-        /* iterate through characters until reaching the end of a single header*/    
-        while(strstr(temp_buf, "\r\n") == NULL) {
-            rio_readnb(rp, temp_buf, size);
-            if((strlen(single_header) + strlen(temp_buf)) * sizeof(char) > sizeof(single_header)) {
-                new_ptr = (char *)realloc(single_header, sizeof(single_header) + MAXLINE);
-                single_header = new_ptr;
-                printf("7: reallocing: temp buf is %s \n", temp_buf);
-                printf("8: reallocing: single_header is %s\n", single_header);
-                strcat(single_header, temp_buf);
-            } else {
-               strcat(single_header, temp_buf);
-               printf("9: temp buf is %s \n", temp_buf);
-               printf("10: single_header is %s\n", single_header);
-            }
-                
-        printf("IN LOOP 2 \n");
-
-        }
-
-        printf("IN LOOP 3 \n");
-
-    }
-
+    //replaceOccurences(oo, "ooo", "");
+    //printf("This is oo %s\n", oo);
+    //printf("the buf before is %s\n", buf);
+    replaceOccurences(buf, "Connection: proxy-connection", "");
+    replaceOccurences(buf, "Connection: connection", "");
+    replaceOccurences(buf, "Connection: keep-alive", "");
+    printf("the buf after is %s \n", buf);
     rio_writen(clientfd, buf, strlen(temp_buf));
     printf("finished writing headers\n");
     return;
+}
+
+
+/**
+ * Replace all occurrences of a given a word in string.
+ */
+void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
+{
+    char *pos, temp[sizeof(buf)];
+    int index = 0;
+    int prevlen;
+
+    prevlen = strlen(prevChar);
+
+
+    /*
+     * Repeat till all occurrences are replaced. 
+     */
+    while ((pos = strstr(buf, prevChar)) != NULL)
+    {
+        // Bakup current line
+        strcpy(temp, buf);
+
+        // Index of current found word
+        index = pos - buf;
+
+        // Terminate str after word found index
+        buf[index] = '\0';
+
+        // Concatenate str with new word 
+        strcat(buf, newChar);
+        
+        // Concatenate str with remaining words after 
+        // oldword found index.
+        strcat(buf, temp + index + prevlen);
+    }
 }
 
 
