@@ -10,6 +10,8 @@
 #include <assert.h>
 
 #include <netdb.h>
+#include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,14 +33,26 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, int clientfd);
+void connection_func(void *arg);
 void replaceOccurences(char *buf, const char *prevChar, const char *newChar);
 static int	open_client(char *hostname, int port);
 //void serve_static(int fd, char *filename, int filesize);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
 //void get_filetype(char *filename, char *filetype);
 struct sockaddr_in serveraddr;
+struct client_info {
+    struct socklen_t clientlen;
+    int connfd;
+};
+int nthreads = 5; /* number of threads created. */ 
+struct client_info connection_array[1000]; /* Echo buffer. */
+int thread_cnt;             /* Item count. */
+int connection_index;
+pthread_mutex_t mutex; /* pthread mutex. */
+pthread_mutex_t thread_lock; /* pthread mutex. */ 
+pthread_cond_t cond_thread_available;   /* pthread cond variable to wait on non-empty buffer. */
 
-
+pthread_cond_t cond_connection_available;   /* pthread cond variable to wait on non-empty buffer. */
 //what else do we need to add?
 /*
 doit
@@ -56,9 +70,14 @@ main(int argc, char **argv)
     printf("STARTING MAIN PROCESS NOW\n");
     //for now, putting in what the tiny shell had, and we'll make adjustments
     int listenfd, connfd;
+    int i;
+    long myid[nthreads]
+    pthread_t tid[nthreads];
     char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
+    struct client_info client_conn;
     struct sockaddr_storage clientaddr;
+    connection_index = -1;
 
     char *log_name = "proxy.log";
 
@@ -78,20 +97,110 @@ main(int argc, char **argv)
 
 	listenfd = Open_listenfd(argv[1]);
 	//TODO: add threads to the following loop using threads as specified in tiny.c
+
+    Pthread_mutex_init(&mutex, NULL);
+
+    thread_mutex_init(&thread_lock, NULL);
+    /* INITIALIZE THE CONDITION VARIABLES HERE. */
+    pthread_cond_init(&cond_thread_available, NULL);
+    pthread_cond_init(&cond_connection_available, NULL);
+
+
+    for (i = 0; i < nthreads; i++) {
+        myid[i] = i;
+        Pthread_create(&tid[i], NULL, connection_func, &myid[i])
+
+    }
+
+    for (i = 0; i < nthreads; i++) {
+        Pthread_join(tid[i], NULL);
+    }
+
+
 	while (1) {
-	    clientlen = sizeof(clientaddr);
-	    //accepts connection request
-	    connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-	    Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
-	    printf("Accepted connection from (%s, %s)\n", hostname, port);
-	    doit(connfd); //performs the transaction
-	    Close(connfd); //closes end of connection
+
+
+        clientlen = sizeof(clientaddr);
+
+        //accepts connection request
+        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+        if (connfd != 0) {
+            Pthread_mutex_lock(&mutex);
+            client_conn.connfd = connfd;
+            client_conn.clientlen = clientlen;
+            connection_array[connection_index + 1] = client_conn;
+            connection_index += 1;
+            //enque connection struct
+            
+            Pthread_mutex_unlock(&mutex);
+        }
+        connfd = 0;
+       
+        
+        
+	    
 	}// until client closed!
 
+    /* Clean up. */
+    Pthread_mutex_destroy(&mutex);
+    /* DESTROY THE CONDITION VARIABLES HERE. */
+    pthread_cond_destroy(&cond_thread_available);
+    pthread_cond_destroy(&cond_connection_available);
 	/* Return success. */
 	fflush(proxy_log);
 	fclose(proxy_log);
 	return (0);
+}
+
+/* Each thread executes this function*/
+
+void connection_func(void *arg) {
+
+    while (1) {
+        /*WAIT ON APPROPRIATE CONDITION VARIABLE. */
+        
+        pthread_cond_await(&cond_thread_available, &mutex);
+        pthread_cond_await(&cond_connection_available, &mutex);
+        struct client_info client_conn;
+        struct socklen_t clientlen;
+        struct sockaddr_storage clientaddr;
+        int connfd;
+        /* Acquire mutex lock. */
+        Pthread_mutex_lock(&mutex);
+        Pthread_mutex_lock(&thread_lock);
+        thread_cnt -= 1;
+        if (thread_cnt == 0) {
+            /* signal no threads currently available*/
+            pthread_cond_signal(&cond_thread_available);
+            client_conn = connection_array[connection_index];
+        }
+        Pthread_mutex_unlock(&thread_lock);
+
+        /* Release mutex lock. */
+        Pthread_mutex_unlock(&mutex);
+        clientlen = sizeof(clientaddr);
+        /* need to include this in struct???? Or always the same value*/
+        //clientlen = client_conn.clientlen;
+        //accepts connection request
+        connfd = client_conn.connfd;
+        Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
+        printf("Accepted connection from (%s, %s)\n", hostname, port);
+        doit(connfd); //performs the transaction
+        Close(connfd); //closes end of connection
+        /* release thread */
+        Pthread_mutex_lock(&thread_lock);
+        if (thread_cnt == 0) {
+            /* signal thread is now available*/
+            thread_cnt += 1;
+            pthread_cond_signal(&cond_thread_available);
+        } else {
+            thread_cnt += 1;
+        }
+        
+        Pthread_mutex_unlock(&thread_lock);
+
+    }
+
 }
 
 
@@ -325,79 +434,6 @@ open_client(char *hostname, int port)
  */
 void read_requesthdrs(rio_t *rp, int clientfd)
 {
-//    need to store the headers
-    //read the headers one by one and decide which ones to drop
-    //at the end, we rebuild the request
-    //malloc and realloc as needed - need to do same thing as first buf
-    //char buf[MAXLINE];
-
-//    printf("Starting read request headers function!!\n");
-//    /*char *buf = calloc(MAXLINE, sizeof(char));
-//    char *temp_buf = calloc(MAXLINE, sizeof(char));*/
-//    char *buf = calloc(MAXLINE, 40 *sizeof(char));
-//    char *temp_buf = calloc(MAXLINE, sizeof(char));
-//
-//    //strcmp returns 0 if the strings are identical
-//    Rio_readlineb(rp, (temp_buf ), MAXLINE);
-//            printf("finished reading once\n");
-//    while(strcmp(temp_buf, "\r\n") != 0) {
-//        printf("Going into a round of the outer while loop!\n");
-//
-//       // temp_buf = calloc(MAXLINE, sizeof(char));
-//        int count = 1;
-//        while(!strstr(temp_buf, "\r\n")) {
-//          //TODO: ask whether previous values tempbuf
-//          //temp_buf = calloc(4, sizeof(char));
-//            printf("going into the INNER while loop\n");
-//                    //buf = (char*) realloc(buf, ((count + 1) * MAX));
-//                    //buf_extended = (char*) realloc(buf_extended, (count * MAX));
-//            printf("going into the INNER while loop2\n");
-//            //Rio_readlineb(rp, ((temp_buf )), MAXLINE);
-//            Rio_readlineb(rp, (temp_buf ), MAXLINE);
-//            printf("finished reading\n");
-//
-//           if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
-//           strstr(temp_buf, "Connection: connection") == NULL &&
-//           strstr(temp_buf, "Connection: keep-alive") == NULL &&
-//           strcmp(temp_buf, "") != 0) {
-//
-//                printf("Sending the header: %s\n", buf);
-//                printf("This is the buf BEFORE concatenating: %s\n", buf);
-//                if(sizeof(buf) + sizeof(temp_buf) <= MAXLINE) {
-//                    strcat(buf, temp_buf);
-//
-//                } else {
-//                    printf("concatenating temp buf requires more memory to be allocated to buf -> realloc happening\n");
-//                    buf = realloc(buf, sizeof(buf) + MAXLINE);
-//                    strcat(buf, temp_buf);
-//                }
-//                printf("This is the buf after concatenating: %s\n", buf);
-//
-//          }
-//            printf("finished concat\n");
-//            //view the headbuf
-//            printf("This is the temp buf: %s\n", temp_buf);
-//            printf("This is the buf: %s\n", buf);
-//          //  Free(temp_buf);
-//
-//
-//                     //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
-//            //                 printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
-//                     //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-//             //        count += 1;
-//                     //printf("Count is %d\n", count);
-//        printf("Inner loop count is %d\n", count);
-//        count += 1;
-//        } //reads in the next header
-//    }
-//
-//    rio_writen(clientfd, buf, strlen(buf));
-//    Free(buf);
-//    Free(temp_buf);
-//    printf("Finished writing to the server\n");
-
-
-    /*An edited version for testing purposes*/
     int size = 7;
     char *temp_buf = calloc(size, sizeof(char));
     char * check_buf = calloc(size, sizeof(char));
