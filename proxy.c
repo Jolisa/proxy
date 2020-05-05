@@ -31,23 +31,24 @@ static char *create_log_entry(const struct sockaddr_in *sockaddr,
 static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 		    char **pathnamep);
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
-void doit(int fd);
+void doit(int fd, struct sockaddr_storage clientaddr);
 void read_requesthdrs(rio_t *rp, int clientfd);
-void *connection_func();
+void *connection_func(void *arg);
 void replaceOccurences(char *buf, const char *prevChar, const char *newChar);
 static int	open_client(char *hostname, int port);
 //void serve_static(int fd, char *filename, int filesize);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
 //void get_filetype(char *filename, char *filetype);
 struct sockaddr_in serveraddr;
-/*struct client_info {
+struct client_info {
     //struct socklen_t clientlen;
+    struct sockaddr_storage clientaddr;
     int connfd;
-};*/
+};
 //int glob_connfd;
 
 int nthreads = 5; /* number of threads created. */ 
-int connection_array[1000]; /* Echo buffer. */
+struct client_info connection_array[1000]; /* Echo buffer. */
 int thread_cnt;             /* Item count. */
 int connection_index;
 pthread_mutex_t mutex; /* pthread mutex. */
@@ -77,8 +78,7 @@ main(int argc, char **argv)
     pthread_t tid[nthreads];
     
     socklen_t clientlen;
-    //struct client_info client_conn;
-    int client_conn;
+    struct client_info client_conn;
     struct sockaddr_storage clientaddr;
     connection_index = -1;
 
@@ -125,13 +125,14 @@ main(int argc, char **argv)
         printf("New connfd is %d\n", connfd);
         printf("Connection index is %d\n", connection_index);
         for (i = 0; i< connection_index; i++) {
-                printf("Connection array at i %d is: \n", connection_array[i]);
+                printf("Connection array at i %d is: \n", connection_array[i].connfd);
 
         }
         if (connfd > 0) {
             printf("We entered the connfd > 0 condition; connfd is %d\n", connfd);
             Pthread_mutex_lock(&mutex);
-            client_conn = connfd;
+            client_conn.connfd = connfd;
+            client_conn.clientaddr = clientaddr;
             //client_conn.clientlen = clientlen;
             connection_array[connection_index + 1] = client_conn;
             connection_index += 1;
@@ -143,7 +144,7 @@ main(int argc, char **argv)
             }
 
             for (i = 0; i< connection_index; i++) {
-                printf("Inside if statement: Connection array at i %d is: \n", connection_array[i]);
+                printf("Inside if statement: Connection array at i %d is: \n", connection_array[i].connfd);
             }    
             
             Pthread_mutex_unlock(&mutex);
@@ -171,11 +172,11 @@ main(int argc, char **argv)
 /* Each thread executes this function*/
 
 void * 
-connection_func() {
+connection_func(void *arg) {
     int tid = (int)Pthread_self();
     printf("Thread  %d Entering connection function!\n", tid);
     
-
+    arg = (void *)arg;
 
     while (1) {
         /*WAIT ON APPROPRIATE CONDITION VARIABLE. */
@@ -192,9 +193,9 @@ connection_func() {
         }
 
 
-        int client_conn;
-        client_conn= connection_array[connection_index];
-        printf("%d Client fd is: %d\n", tid, client_conn);
+        struct client_info client_conn;
+        client_conn = connection_array[connection_index];
+        printf("%d Client fd is: %d\n", tid, client_conn.connfd);
         connection_index--;
 
         /* Release mutex lock. */
@@ -210,9 +211,9 @@ connection_func() {
         //printf("Accepted connection from (%s, %s)\n", hostname, port);
 
 
-        doit(client_conn); //performs the transaction
+        doit(client_conn.connfd, client_conn.clientaddr); //performs the transaction
         printf("This is the thread that executed %d\n", tid);
-        Close(client_conn); //closes end of connection
+        Close(client_conn.connfd); //closes end of connection
 
 
     }
@@ -225,7 +226,7 @@ connection_func() {
  * doit - handle one HTTP request/response transaction
  */
 
-void doit(int fd)
+void doit(int fd, struct sockaddr_storage clientaddr)
 {
      printf("STARTING DOIT FUNCTION!!!\n");
      
@@ -365,7 +366,7 @@ void doit(int fd)
         size += length;
 
     }
-    log_data = create_log_entry(&serveraddr, uri, size);
+    log_data = create_log_entry((const struct sockaddr_in *)&clientaddr, uri, size);
 
     //fprintf(proxy_log, "%s\n", log_data);
     fprintf(proxy_log, log_data);
