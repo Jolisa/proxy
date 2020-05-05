@@ -96,50 +96,50 @@ main(int argc, char **argv)
 
 
 	listenfd = Open_listenfd(argv[1]);
-	//TODO: add threads to the following loop using threads as specified in tiny.c
 
     Pthread_mutex_init(&mutex, NULL);
 
-    Pthread_mutex_init(&thread_lock, NULL);
+//    Pthread_mutex_init(&thread_lock, NULL);
     /* INITIALIZE THE CONDITION VARIABLES HERE. */
-    pthread_cond_init(&cond_thread_available, NULL);
+//    pthread_cond_init(&cond_thread_available, NULL);
     pthread_cond_init(&cond_connection_available, NULL);
 
 
     for (i = 0; i < nthreads; i++) {
         myid[i] = i;
         Pthread_create(&tid[i], NULL, connection_func, &myid[i]);
-
     }
 
-    for (i = 0; i < nthreads; i++) {
-        Pthread_join(tid[i], NULL);
-    }
+    //starting producer thingy
 
 
 	while (1) {
-
-
-        clientlen = sizeof(clientaddr);
+        clientlen = sizeof(clientaddr); //key
+        connfd = 0;
 
         //accepts connection request
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-        if (connfd != 0) {
+        if (connfd > 0) {
             Pthread_mutex_lock(&mutex);
             client_conn.connfd = connfd;
             //client_conn.clientlen = clientlen;
             connection_array[connection_index + 1] = client_conn;
             connection_index += 1;
             //enque connection struct
+
+            if(connection_index == 1) {
+                printf("sending the connection available signal");
+                Pthread_cond_signal(&cond_connection_available);
+            }
             
             Pthread_mutex_unlock(&mutex);
         }
-        connfd = 0;
-       
-        
-        
-	    
 	}// until client closed!
+
+// don't need this bc thread space
+//	for (i = 0; i < nthreads; i++) {
+//        Pthread_join(tid[i], NULL);
+//    }
 
     /* Clean up. */
     Pthread_mutex_destroy(&mutex);
@@ -157,49 +157,75 @@ main(int argc, char **argv)
 void * 
 connection_func() {
 
+    printf("Entering connection function!\n");
+
+
     while (1) {
         /*WAIT ON APPROPRIATE CONDITION VARIABLE. */
         
-        pthread_cond_wait(&cond_thread_available, &mutex);
-        pthread_cond_wait(&cond_connection_available, &mutex);
+//        pthread_cond_wait(&cond_thread_available, &mutex);
+//        printf("Have the thread available condition\n");
+
+        Pthread_mutex_lock(&mutex);
+        printf("acquired mutex lock\n");
+//
+//        if(connection_index == 0) {
+//            Pthread_cond_wait(&cond_connection_available, &mutex);
+//            printf("Have the connection condition\n");
+//        }
+
+        //while
+        while(connection_index == 0) {
+            Pthread_cond_wait(&cond_connection_available, &mutex);
+            printf("Have the connection condition\n");
+        }
+
         //char hostname[MAXLINE], port[MAXLINE];
-        struct client_info client_conn;
+
         //struct socklen_t clientlen;
         //struct sockaddr_storage clientaddr;
-        int connfd;
+//        int connfd;
         /* Acquire mutex lock. */
-        Pthread_mutex_lock(&mutex);
-        Pthread_mutex_lock(&thread_lock);
-        thread_cnt -= 1;
-        if (thread_cnt == 0) {
-            /* signal no threads currently available*/
-            pthread_cond_signal(&cond_thread_available);
-            client_conn = connection_array[connection_index];
-        }
-        Pthread_mutex_unlock(&thread_lock);
+//        Pthread_mutex_lock(&mutex);
+
+//        Pthread_mutex_lock(&thread_lock);
+//        printf("acquired thread lock\n");
+//        thread_cnt -= 1;
+
+        struct client_info client_conn;
+        client_conn = connection_array[connection_index];
+
+        connection_index--;
+
+
+//
+//        if (thread_cnt == 0) {
+//            /* signal no threads currently available*/
+//            printf("about to send the condition thread NOT available signal\n");
+//            pthread_cond_signal(&cond_thread_available);
+//            printf("sent the condition thread NOT available signal\n");
+//            client_conn = connection_array[connection_index];
+//        }
+
+//        Pthread_mutex_unlock(&thread_lock);
+//        printf("released thread lock\n");
 
         /* Release mutex lock. */
         Pthread_mutex_unlock(&mutex);
+        printf("released mutex lock\n");
+
+
         //clientlen = sizeof(clientaddr);
         /* need to include this in struct???? Or always the same value*/
         //clientlen = client_conn.clientlen;
         //accepts connection request
-        connfd = client_conn.connfd;
         //Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
         //printf("Accepted connection from (%s, %s)\n", hostname, port);
-        doit(connfd); //performs the transaction
-        Close(connfd); //closes end of connection
-        /* release thread */
-        Pthread_mutex_lock(&thread_lock);
-        if (thread_cnt == 0) {
-            /* signal thread is now available*/
-            thread_cnt += 1;
-            pthread_cond_signal(&cond_thread_available);
-        } else {
-            thread_cnt += 1;
-        }
-        
-        Pthread_mutex_unlock(&thread_lock);
+
+
+        doit(client_conn.connfd); //performs the transaction
+        Close(client_conn.connfd); //closes end of connection
+
 
     }
 
@@ -744,3 +770,25 @@ static const void *dummy_ref[] = { client_error, create_log_entry, dummy_ref,
         printf("Count is %d\n", count);
     }*/
     //DOIT++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+    //THIS CAME FROM CONNECTION FUNC
+    //        /* release thread */
+    //        Pthread_mutex_lock(&thread_lock);
+    //        printf("acquired the thread lock\n");
+    //        if (thread_cnt == 0) {
+    //            /* signal thread is now available*/
+    //            thread_cnt += 1;
+    //            printf("about to send the condition thread available signal\n");
+    //            pthread_cond_signal(&cond_thread_available);
+    //            printf("sent the condition thread available signal\n");
+    //
+    //        } else {
+    //            thread_cnt += 1;
+    //        }
+    //
+    //        Pthread_mutex_unlock(&thread_lock);
+    //        printf("released the thread lock\n");
+
+    //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
