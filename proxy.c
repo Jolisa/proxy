@@ -33,7 +33,7 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, int clientfd);
-void connection_func(void *arg);
+void *connection_func();
 void replaceOccurences(char *buf, const char *prevChar, const char *newChar);
 static int	open_client(char *hostname, int port);
 //void serve_static(int fd, char *filename, int filesize);
@@ -41,7 +41,7 @@ static int	open_client(char *hostname, int port);
 //void get_filetype(char *filename, char *filetype);
 struct sockaddr_in serveraddr;
 struct client_info {
-    struct socklen_t clientlen;
+    //struct socklen_t clientlen;
     int connfd;
 };
 int nthreads = 5; /* number of threads created. */ 
@@ -71,9 +71,9 @@ main(int argc, char **argv)
     //for now, putting in what the tiny shell had, and we'll make adjustments
     int listenfd, connfd;
     int i;
-    long myid[nthreads]
+    long myid[nthreads];
     pthread_t tid[nthreads];
-    char hostname[MAXLINE], port[MAXLINE];
+    
     socklen_t clientlen;
     struct client_info client_conn;
     struct sockaddr_storage clientaddr;
@@ -100,7 +100,7 @@ main(int argc, char **argv)
 
     Pthread_mutex_init(&mutex, NULL);
 
-    thread_mutex_init(&thread_lock, NULL);
+    Pthread_mutex_init(&thread_lock, NULL);
     /* INITIALIZE THE CONDITION VARIABLES HERE. */
     pthread_cond_init(&cond_thread_available, NULL);
     pthread_cond_init(&cond_connection_available, NULL);
@@ -108,7 +108,7 @@ main(int argc, char **argv)
 
     for (i = 0; i < nthreads; i++) {
         myid[i] = i;
-        Pthread_create(&tid[i], NULL, connection_func, &myid[i])
+        Pthread_create(&tid[i], NULL, connection_func, &myid[i]);
 
     }
 
@@ -127,7 +127,7 @@ main(int argc, char **argv)
         if (connfd != 0) {
             Pthread_mutex_lock(&mutex);
             client_conn.connfd = connfd;
-            client_conn.clientlen = clientlen;
+            //client_conn.clientlen = clientlen;
             connection_array[connection_index + 1] = client_conn;
             connection_index += 1;
             //enque connection struct
@@ -154,16 +154,18 @@ main(int argc, char **argv)
 
 /* Each thread executes this function*/
 
-void connection_func(void *arg) {
+void * 
+connection_func() {
 
     while (1) {
         /*WAIT ON APPROPRIATE CONDITION VARIABLE. */
         
-        pthread_cond_await(&cond_thread_available, &mutex);
-        pthread_cond_await(&cond_connection_available, &mutex);
+        pthread_cond_wait(&cond_thread_available, &mutex);
+        pthread_cond_wait(&cond_connection_available, &mutex);
+        //char hostname[MAXLINE], port[MAXLINE];
         struct client_info client_conn;
-        struct socklen_t clientlen;
-        struct sockaddr_storage clientaddr;
+        //struct socklen_t clientlen;
+        //struct sockaddr_storage clientaddr;
         int connfd;
         /* Acquire mutex lock. */
         Pthread_mutex_lock(&mutex);
@@ -178,13 +180,13 @@ void connection_func(void *arg) {
 
         /* Release mutex lock. */
         Pthread_mutex_unlock(&mutex);
-        clientlen = sizeof(clientaddr);
+        //clientlen = sizeof(clientaddr);
         /* need to include this in struct???? Or always the same value*/
         //clientlen = client_conn.clientlen;
         //accepts connection request
         connfd = client_conn.connfd;
-        Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
-        printf("Accepted connection from (%s, %s)\n", hostname, port);
+        //Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
+        //printf("Accepted connection from (%s, %s)\n", hostname, port);
         doit(connfd); //performs the transaction
         Close(connfd); //closes end of connection
         /* release thread */
