@@ -40,12 +40,14 @@ static int	open_client(char *hostname, int port);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
 //void get_filetype(char *filename, char *filetype);
 struct sockaddr_in serveraddr;
-struct client_info {
+/*struct client_info {
     //struct socklen_t clientlen;
     int connfd;
-};
+};*/
+//int glob_connfd;
+
 int nthreads = 5; /* number of threads created. */ 
-struct client_info connection_array[1000]; /* Echo buffer. */
+int connection_array[1000]; /* Echo buffer. */
 int thread_cnt;             /* Item count. */
 int connection_index;
 pthread_mutex_t mutex; /* pthread mutex. */
@@ -75,7 +77,8 @@ main(int argc, char **argv)
     pthread_t tid[nthreads];
     
     socklen_t clientlen;
-    struct client_info client_conn;
+    //struct client_info client_conn;
+    int client_conn;
     struct sockaddr_storage clientaddr;
     connection_index = -1;
 
@@ -119,21 +122,34 @@ main(int argc, char **argv)
 
         //accepts connection request
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+        printf("New connfd is %d\n", connfd);
+        printf("Connection index is %d\n", connection_index);
+        for (i = 0; i< connection_index; i++) {
+                printf("Connection array at i %d is: \n", connection_array[i]);
+
+        }
         if (connfd > 0) {
+            printf("We entered the connfd > 0 condition; connfd is %d\n", connfd);
             Pthread_mutex_lock(&mutex);
-            client_conn.connfd = connfd;
+            client_conn = connfd;
             //client_conn.clientlen = clientlen;
             connection_array[connection_index + 1] = client_conn;
             connection_index += 1;
             //enque connection struct
 
-            if(connection_index == 1) {
+            if(connection_index == 0) {
                 printf("sending the connection available signal");
                 Pthread_cond_signal(&cond_connection_available);
             }
+
+            for (i = 0; i< connection_index; i++) {
+                printf("Inside if statement: Connection array at i %d is: \n", connection_array[i]);
+            }    
             
             Pthread_mutex_unlock(&mutex);
         }
+        
+
 	}// until client closed!
 
 // don't need this bc thread space
@@ -156,8 +172,9 @@ main(int argc, char **argv)
 
 void * 
 connection_func() {
-
-    printf("Entering connection function!\n");
+    int tid = (int)Pthread_self();
+    printf("Thread  %d Entering connection function!\n", tid);
+    
 
 
     while (1) {
@@ -167,52 +184,22 @@ connection_func() {
 //        printf("Have the thread available condition\n");
 
         Pthread_mutex_lock(&mutex);
-        printf("acquired mutex lock\n");
-//
-//        if(connection_index == 0) {
-//            Pthread_cond_wait(&cond_connection_available, &mutex);
-//            printf("Have the connection condition\n");
-//        }
+        printf("%d acquired mutex lock\n", tid);
 
-        //while
-        while(connection_index == 0) {
+        while(connection_index < 0) {
             Pthread_cond_wait(&cond_connection_available, &mutex);
-            printf("Have the connection condition\n");
+            printf("%d Have the connection condition\n", tid);
         }
 
-        //char hostname[MAXLINE], port[MAXLINE];
 
-        //struct socklen_t clientlen;
-        //struct sockaddr_storage clientaddr;
-//        int connfd;
-        /* Acquire mutex lock. */
-//        Pthread_mutex_lock(&mutex);
-
-//        Pthread_mutex_lock(&thread_lock);
-//        printf("acquired thread lock\n");
-//        thread_cnt -= 1;
-
-        struct client_info client_conn;
-        client_conn = connection_array[connection_index];
-
+        int client_conn;
+        client_conn= connection_array[connection_index];
+        printf("%d Client fd is: %d\n", tid, client_conn);
         connection_index--;
-
-
-//
-//        if (thread_cnt == 0) {
-//            /* signal no threads currently available*/
-//            printf("about to send the condition thread NOT available signal\n");
-//            pthread_cond_signal(&cond_thread_available);
-//            printf("sent the condition thread NOT available signal\n");
-//            client_conn = connection_array[connection_index];
-//        }
-
-//        Pthread_mutex_unlock(&thread_lock);
-//        printf("released thread lock\n");
 
         /* Release mutex lock. */
         Pthread_mutex_unlock(&mutex);
-        printf("released mutex lock\n");
+        printf("%d released mutex lock\n", tid);
 
 
         //clientlen = sizeof(clientaddr);
@@ -223,8 +210,9 @@ connection_func() {
         //printf("Accepted connection from (%s, %s)\n", hostname, port);
 
 
-        doit(client_conn.connfd); //performs the transaction
-        Close(client_conn.connfd); //closes end of connection
+        doit(client_conn); //performs the transaction
+        printf("This is the thread that executed %d\n", tid);
+        Close(client_conn); //closes end of connection
 
 
     }
@@ -394,7 +382,11 @@ void doit(int fd)
     // TODO: put stuff in the log
     /*. CLOSE. CLIENT FD*/
     Close(serverfd);
-
+    Free(hostnamep);
+    Free(portp);
+    Free(pathnamep);
+    Free(client_buf);
+    Free(log_data);
     Free(buf);
     Free(temp_buf);
 
