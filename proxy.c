@@ -32,7 +32,7 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 		    char **pathnamep);
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd, struct sockaddr_storage clientaddr);
-void read_requesthdrs(rio_t *rp, int clientfd);
+void read_requesthdrs(rio_t *rp, int clientfd, char *buf);
 void *connection_func(void *arg);
 void replaceOccurences(char *buf, const char *prevChar, const char *newChar);
 static int	open_client(char *hostname, int port);
@@ -47,8 +47,9 @@ struct client_info {
 };
 //int glob_connfd;
 
-int nthreads = 5; /* number of threads created. */ 
-struct client_info connection_array[1000]; /* Echo buffer. */
+int nthreads = 5; /* number of threads created. */
+int max_num_connections = 1;
+struct client_info connection_array[1]; /* Echo buffer. */
 int thread_cnt;             /* Item count. */
 int connection_index;
 pthread_mutex_t mutex; /* pthread mutex. */
@@ -56,6 +57,7 @@ pthread_mutex_t thread_lock; /* pthread mutex. */
 pthread_cond_t cond_thread_available;   /* pthread cond variable to wait on non-empty buffer. */
 
 pthread_cond_t cond_connection_available;   /* pthread cond variable to wait on non-empty buffer. */
+pthread_cond_t cond_connection_array_full;  /* pthread cond variable to wait on full buffer. */
 //what else do we need to add?
 /*
 doit
@@ -106,6 +108,7 @@ main(int argc, char **argv)
     /* INITIALIZE THE CONDITION VARIABLES HERE. */
 //    pthread_cond_init(&cond_thread_available, NULL);
     pthread_cond_init(&cond_connection_available, NULL);
+    pthread_cond_init(&cond_connection_array_full, NULL);
 
 
     for (i = 0; i < nthreads; i++) {
@@ -131,9 +134,16 @@ main(int argc, char **argv)
         if (connfd > 0) {
             printf("We entered the connfd > 0 condition; connfd is %d\n", connfd);
             Pthread_mutex_lock(&mutex);
+
             client_conn.connfd = connfd;
             client_conn.clientaddr = clientaddr;
             //client_conn.clientlen = clientlen;
+
+            while(connection_index == (max_num_connections - 1)) {
+                Pthread_cond_wait(&cond_connection_array_full, &mutex);
+                printf("Have the array full signal condition\n");
+            }
+
             connection_array[connection_index + 1] = client_conn;
             connection_index += 1;
             //enque connection struct
@@ -142,6 +152,7 @@ main(int argc, char **argv)
                 printf("sending the connection available signal");
                 Pthread_cond_signal(&cond_connection_available);
             }
+
 
             for (i = 0; i< connection_index; i++) {
                 printf("Inside if statement: Connection array at i %d is: \n", connection_array[i].connfd);
@@ -187,7 +198,7 @@ connection_func(void *arg) {
         Pthread_mutex_lock(&mutex);
         printf("%d acquired mutex lock\n", tid);
 
-        while(connection_index < 0) {
+        while (connection_index < 0) {
             Pthread_cond_wait(&cond_connection_available, &mutex);
             printf("%d Have the connection condition\n", tid);
         }
@@ -197,6 +208,11 @@ connection_func(void *arg) {
         client_conn = connection_array[connection_index];
         printf("%d Client fd is: %d\n", tid, client_conn.connfd);
         connection_index--;
+
+        if ((connection_index + 1) == (max_num_connections - 1)) {
+            printf("sending the connection array full signal\n");
+            Pthread_cond_signal(&cond_connection_array_full);
+        }
 
         /* Release mutex lock. */
         Pthread_mutex_unlock(&mutex);
@@ -329,14 +345,14 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     Rio_readinitb(&rio_server, serverfd);
 
     // writes first line of request to the origin server
-    Rio_writen(serverfd, buf, strlen(buf));
+   // Rio_writen(serverfd, buf, strlen(buf));
 
     printf("Buf is %s \n", buf);
 
     
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
-    read_requesthdrs(&rio, serverfd);
+    read_requesthdrs(&rio, serverfd, buf);
 
     /*  add connection closed to buff and send*/
 
@@ -453,7 +469,7 @@ open_client(char *hostname, int port)
 /*
  * read_requesthdrs - read and parse HTTP request headers
  */
-void read_requesthdrs(rio_t *rp, int clientfd)
+void read_requesthdrs(rio_t *rp, int clientfd, char *buf)
 {
     int size = 7;
     char *temp_buf = calloc(size, sizeof(char));
@@ -461,12 +477,14 @@ void read_requesthdrs(rio_t *rp, int clientfd)
     int buf_length;
 //    char buf[MAXLINE];
 //    char single_header[MAXLINE];
-    char *buf = calloc(MAXLINE, sizeof(char));
+   // char *buf = calloc(MAXLINE, sizeof(char));
     printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
     printf("ORIGINAL temp_buf size is %d \n", (int) sizeof(temp_buf));
     //char *single_header = calloc(MAXLINE, sizeof(char));
-    char *new_ptr = calloc(MAXLINE, sizeof(char));
+    char *new_ptr = calloc((2 * MAXLINE), sizeof(char));
 
+    new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+    buf= new_ptr;
 
     rio_readnb(rp, temp_buf, size);
     strcat(buf, temp_buf);
@@ -494,15 +512,14 @@ void read_requesthdrs(rio_t *rp, int clientfd)
         printf("check_buf is %s\n", check_buf);
         
     }
-    replaceOccurences(buf, "</script>", "");
     char * oo = calloc(10, sizeof(char));
     oo = "Hellllooo";
 
     //char oo[10] = "Hellllooo";
     printf("This is oo %s\n", oo);
 
-    //replaceOccurences(oo, "ooo", "");
-    //printf("This is oo %s\n", oo);
+    replaceOccurences(oo, "ooo", "");
+    printf("This is oo %s\n", oo);
     //printf("the buf before is %s\n", buf);
     replaceOccurences(buf, "Connection: proxy-connection", "");
     replaceOccurences(buf, "Connection: connection", "");
@@ -523,6 +540,8 @@ void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
     int index = 0;
     int prevlen;
 
+    printf("going into replace occurences here haha\n");
+
     prevlen = strlen(prevChar);
 
 
@@ -531,6 +550,7 @@ void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
      */
     while ((pos = strstr(buf, prevChar)) != NULL)
     {
+
         // Bakup current line
         strcpy(temp, buf);
 
@@ -540,8 +560,10 @@ void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
         // Terminate str after word found index
         buf[index] = '\0';
 
+        printf("this could be a prob line\n");
         // Concatenate str with new word 
         strcat(buf, newChar);
+        printf("we passed the possible problem line\n");
         
         // Concatenate str with remaining words after 
         // oldword found index.
