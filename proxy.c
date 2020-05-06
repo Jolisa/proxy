@@ -265,12 +265,12 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
 
      int serverfd;
-     char *buf = calloc(MAXLINE, sizeof(char));
+     char *buf = calloc(3 * MAXLINE, sizeof(char));
      char *log_data = calloc(MAXLINE, sizeof(char));
      char *temp_buf= calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-     char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
+     char *client_buf = calloc(3 * MAXLINE, sizeof(char)); // [MAXLINE];
      rio_t rio, rio_server;
 
      //initialize memory to 0, cleans out whatever was there previously
@@ -284,7 +284,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
      Rio_readinitb(&rio, fd); //init reader
 
-     if(!Rio_readlineb(&rio, buf, MAXLINE)) {
+     if(!Rio_readlineb(&rio, buf, 3 * MAXLINE)) {
         printf("No request to read! ERROR!\n");
         return;
      }
@@ -321,12 +321,6 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         return;
     }
 
-    /* TODO:check 1.0 or 1.1*/
-
-
-
-     /* FREEE STRINGS after completed use */
-     	
     printf("About to parse uri:\n");
     printf("Uri is: %s\n", uri);
 
@@ -342,7 +336,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 	} else if (serverfd == -2) {
 		dns_error("open_clientfd DNS error");
 	}
-    Rio_readinitb(&rio_server, serverfd);
+    rio_readinitb(&rio_server, serverfd);
 
     // writes first line of request to the origin server
    // Rio_writen(serverfd, buf, strlen(buf));
@@ -357,12 +351,12 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     /*  add connection closed to buff and send*/
 
     if (strstr(version, "1.1") != NULL) { // it's version 1.1
-        Rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+        rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
         printf("Connection closed header sent.\n");
     }
 
     /* Write empty line to server to signal end of headers*/
-    Rio_writen(serverfd, "\r\n", strlen("\r\n"));
+    rio_writen(serverfd, "\r\n", strlen("\r\n"));
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
     printf("finished FINALLY writing headers 2 and sent a new empty line\n");
@@ -375,10 +369,10 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     printf("Writing to client now\n");
     //printf("Client buf is %s \n", client_buf);
     int size = 0;
-    while((length = rio_readlineb(&rio_server, client_buf, MAXLINE)) > 0) {
-    	printf("Entered loop for writing to server\n");
-        printf("Sending the message: %s\n", client_buf);
-        Rio_writen(fd, client_buf, length);
+    while((length = rio_readlineb(&rio_server, client_buf, 3 * MAXLINE)) > 0) {
+//    	printf("Entered loop for writing to server\n");
+//        printf("Sending the message: %s\n", client_buf);
+        rio_writen(fd, client_buf, length);
         size += length;
 
     }
@@ -471,61 +465,91 @@ open_client(char *hostname, int port)
  */
 void read_requesthdrs(rio_t *rp, int clientfd, char *buf)
 {
-    int size = 7;
-    char *temp_buf = calloc(size, sizeof(char));
-    char * check_buf = calloc(size, sizeof(char));
-    int buf_length;
+//    int size = 7;
+//    char *temp_buf = calloc(size, sizeof(char));
+//    char *check_buf = calloc(size, sizeof(char));
+//    int buf_length;
 //    char buf[MAXLINE];
 //    char single_header[MAXLINE];
    // char *buf = calloc(MAXLINE, sizeof(char));
     printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
-    printf("ORIGINAL temp_buf size is %d \n", (int) sizeof(temp_buf));
+//    printf("ORIGINAL temp_buf size is %d \n", (int) sizeof(temp_buf));
     //char *single_header = calloc(MAXLINE, sizeof(char));
-    char *new_ptr = calloc((2 * MAXLINE), sizeof(char));
+    char *new_ptr = calloc((4 * MAXLINE), sizeof(char));
 
-    new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+    new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
     buf= new_ptr;
 
-    rio_readnb(rp, temp_buf, size);
-    strcat(buf, temp_buf);
-    /* create initial line of headers*/
-    
-    while(strcmp(check_buf, "\r\n\r\n") != 0) {
-        Rio_readnb(rp, temp_buf, size);
-        if((strlen(buf) + strlen(temp_buf) * sizeof(char)) > sizeof(buf)) {
-                printf("0: str_len buf is : %d , str_len temp_buf is : %d \n", (int) strlen(buf), (int) strlen(temp_buf));
-                printf("1: temp_buf is %s\n", temp_buf);
-                printf("2: buf is %s\n", buf);
-                new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+//    rio_readnb(rp, temp_buf, size);
+//    strcat(buf, temp_buf);
+//    /* create initial line of headers*/
+//
+//    while(strcmp(check_buf, "\r\n\r\n") != 0) {
+//        Rio_readnb(rp, temp_buf, size);
+//        if((strlen(buf) + strlen(temp_buf) * sizeof(char)) > sizeof(buf)) {
+//                printf("0: str_len buf is : %d , str_len temp_buf is : %d \n", (int) strlen(buf), (int) strlen(temp_buf));
+//                printf("1: temp_buf is %s\n", temp_buf);
+//                printf("2: buf is %s\n", buf);
+//                new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
+//                buf= new_ptr;
+//                strcat(buf, temp_buf);
+//            } else {
+//               printf("3: temp_buf is %s\n", temp_buf);
+//               printf("4: buf is %s\n", buf);
+//               strcat(buf, temp_buf);
+//            }
+//        buf_length = strlen(buf);
+//        printf("buf_length is %d\n", buf_length);
+//        check_buf = &buf[buf_length - 4];
+//        printf("check_buf is %s\n", check_buf);
+//
+//    }
+
+
+
+    /*An edited version for testing purposes*/
+    char temp_buf[MAXLINE * 3];
+    Rio_readlineb(rp, temp_buf, MAXLINE * 3);
+    if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
+    strstr(temp_buf, "Connection: connection") == NULL &&
+    strstr(temp_buf, "Connection: keep-alive") == NULL &&
+    strcmp(temp_buf, "\r\n")) {
+        printf("SENDING THE FIRST HEADER\n");
+        printf("%s", temp_buf);
+        if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
+            new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
+            buf= new_ptr;
+            strcat(buf, temp_buf);
+        } else {
+            printf("3: temp_buf is %s\n", temp_buf);
+            printf("4: buf is %s\n", buf);
+            strcat(buf, temp_buf);
+        }
+        //Rio_writen(clientfd, temp_buf, strlen(temp_buf));
+    }
+    while(strcmp(temp_buf, "\r\n") != 0) {
+        Rio_readlineb(rp, temp_buf, (3 * MAXLINE));
+        if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
+            strstr(temp_buf, "Connection: connection") == NULL &&
+            strstr(temp_buf, "Connection: keep-alive") == NULL &&
+            strcmp(temp_buf, "\r\n")) {
+//                Rio_writen(clientfd, temp_buf, strlen(temp_buf));
+//            	printf("Sending the header of %s \n", temp_buf);
+            printf("%s", temp_buf);
+            if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
+                new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
                 buf= new_ptr;
                 strcat(buf, temp_buf);
             } else {
-               printf("3: temp_buf is %s\n", temp_buf);
-               printf("4: buf is %s\n", buf);
-               strcat(buf, temp_buf);
+                printf("3: temp_buf is %s\n", temp_buf);
+                printf("4: buf is %s\n", buf);
+                strcat(buf, temp_buf);
             }
-
-
-        buf_length = strlen(buf);
-        printf("buf_length is %d\n", buf_length);
-        check_buf = &buf[buf_length - 4];
-        printf("check_buf is %s\n", check_buf);
-        
+        }
     }
-    char * oo = calloc(10, sizeof(char));
-    oo = "Hellllooo";
 
-    //char oo[10] = "Hellllooo";
-    printf("This is oo %s\n", oo);
-
-    replaceOccurences(oo, "ooo", "");
-    printf("This is oo %s\n", oo);
-    //printf("the buf before is %s\n", buf);
-    replaceOccurences(buf, "Connection: proxy-connection", "");
-    replaceOccurences(buf, "Connection: connection", "");
-    replaceOccurences(buf, "Connection: keep-alive", "");
-    printf("the buf after is %s \n", buf);
-    rio_writen(clientfd, buf, strlen(temp_buf));
+    printf("the buf after is\n%s \n", buf);
+    rio_writen(clientfd, buf, strlen(buf));
     printf("finished writing headers\n");
     return;
 }
@@ -544,12 +568,15 @@ void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
 
     prevlen = strlen(prevChar);
 
+    printf("can't even get past prevchar?\n");
+
 
     /*
      * Repeat till all occurrences are replaced. 
      */
     while ((pos = strstr(buf, prevChar)) != NULL)
     {
+        printf("enter the loopy, pos = %s\n", pos);
 
         // Bakup current line
         strcpy(temp, buf);
@@ -557,8 +584,12 @@ void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
         // Index of current found word
         index = pos - buf;
 
+        printf("index: %d\n", index);
+
         // Terminate str after word found index
         buf[index] = '\0';
+
+        printf("buf is:\n%s\n", buf);
 
         printf("this could be a prob line\n");
         // Concatenate str with new word 
@@ -569,6 +600,8 @@ void replaceOccurences(char *buf, const char *prevChar, const char *newChar)
         // oldword found index.
         strcat(buf, temp + index + prevlen);
     }
+
+    return;
 }
 
 
