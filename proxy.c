@@ -32,7 +32,7 @@ static int	parse_uri(const char *uri, char **hostnamep, char **portp,
 		    char **pathnamep);
 int parse_uri_static(char *uri, char *filename, char *cgiargs); 
 void doit(int fd, struct sockaddr_storage clientaddr);
-void read_requesthdrs(rio_t *rp, int clientfd, char *buf);
+void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version);
 void *connection_func(void *arg);
 void replaceOccurences(char *buf, const char *prevChar, const char *newChar);
 static int	open_client(char *hostname, int port);
@@ -40,6 +40,7 @@ static int	open_client(char *hostname, int port);
 //void serve_dynamic(int fd, char *filename, char *cgiargs);
 //void get_filetype(char *filename, char *filetype);
 struct sockaddr_in serveraddr;
+struct addrinfo *ai;
 struct client_info {
     //struct socklen_t clientlen;
     struct sockaddr_storage clientaddr;
@@ -74,6 +75,7 @@ main(int argc, char **argv)
 {
     printf("STARTING MAIN PROCESS NOW\n");
     //for now, putting in what the tiny shell had, and we'll make adjustments
+    signal(SIGPIPE, SIG_IGN);
     int listenfd, connfd;
     int i;
     long myid[nthreads];
@@ -248,29 +250,19 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      
 //     int clientfd;
      //struct stat sbuf;
-     //struct sockaddr_in serveraddr;
-	 //struct addrinfo *ai;
-     //char buf[MAXLINE];
-     //need to check sizes of possible bufs - might actually need to realloc
-//     char *buf = calloc(MAXLINE, sizeof(char));
-//     char *temp_buf= calloc(MAXLINE, sizeof(char));
-     //char *headbuf = (char*) calloc(MAXLINE, sizeof(char));
-//     char *hostnamep, *portp, *pathnamep;
-//     char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-     //char filename[MAXLINE];
-     //char cgiargs[MAXLINE];
-//     rio_t rio;
+     //struct sockaddr_in serveraddr
 
 
 
-
-     int serverfd;
+     int serverfd, rio_r, rio_w;
+     //int rio_r;
+     //int rio_w;
      char *buf = calloc(3 * MAXLINE, sizeof(char));
      char *log_data = calloc(MAXLINE, sizeof(char));
      char *temp_buf= calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-     char *client_buf = calloc(3 * MAXLINE, sizeof(char)); // [MAXLINE];
+     char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
      rio_t rio, rio_server;
 
      //initialize memory to 0, cleans out whatever was there previously
@@ -282,38 +274,39 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
      /* First, we have to get the FIRST request line and parse it */
 
-     Rio_readinitb(&rio, fd); //init reader
+     rio_readinitb(&rio, fd); //init reader
 
-     if(!Rio_readlineb(&rio, buf, 3 * MAXLINE)) {
+     if((rio_r = rio_readlineb(&rio, temp_buf, MAXLINE)) == -1 && errno == ECONNRESET) {
         printf("No request to read! ERROR!\n");
+        freeaddrinfo(ai);
+        Free(hostnamep);
+        Free(portp);
+        Free(pathnamep);
+        Free(client_buf);
+        Free(log_data);
+        //Free(buf);
+        Free(temp_buf);
+        
+        //Close(clientfd);
+        //Close(serverfd);
         return;
+        
      }
+    
+
+
+
+
      printf("The first line of request from client is: %s\n", buf);
 
-     //TODO: fix the following implementation
-     /*Version that accounts for lines longer than MAXLINE*/
-     //goes through the first line and gets the line while there are still characters to get
-//     int count = 1;
-//     while(!strstr(buf, "\r\n")) {
-//     	//buf = (char*) realloc(buf, ((count + 1) * MAX));
-//     	//buf_extended = (char*) realloc(buf_extended, (count * MAX));
-//     	Rio_readlineb(&rio, ((temp_buf )), MAXLINE);
-//     	strcat(buf, temp_buf);
-//        //Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
-//        printf("buf is : %s and is size %d\n", buf, (int) strlen(buf));
-//        //printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-//        count += 1;
-//        //printf("Count is %d\n", count);
-//     }
-
-
      /* Verify that this is a get request*/
-    sscanf(buf, "%s %s %s", method, uri, version);
+    sscanf(temp_buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) {
         client_error(fd, method, 501, "Not implemented",
         "This proxy server does not implement this method");
          return;
     }
+    /* TODO: string compare to HTTP/1.0 or 1.1*/
 
     if(strstr(version, "1.1") == NULL && strstr(version, "1.0") == NULL) {
         client_error(fd, version, 500, "Not supported",
@@ -341,22 +334,36 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     // writes first line of request to the origin server
    // Rio_writen(serverfd, buf, strlen(buf));
 
-    printf("Buf is %s \n", buf);
-
     
 
+    strcpy(buf, "GET ");
+    strcat(buf, pathnamep);
+    strcat(buf, " ");
+    strcat(buf, version);
+    strcat(buf, "\r\n");
+    printf("Buf is %s \n", buf);
+
     /* edited to check for headers we don't want to be sent, will send to origin server */
-    read_requesthdrs(&rio, serverfd, buf);
+    read_requesthdrs(&rio, serverfd, buf, version);
 
-    /*  add connection closed to buff and send*/
-
-    if (strstr(version, "1.1") != NULL) { // it's version 1.1
-        rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
-        printf("Connection closed header sent.\n");
-    }
+   
 
     /* Write empty line to server to signal end of headers*/
-    rio_writen(serverfd, "\r\n", strlen("\r\n"));
+    rio_w = rio_writen(serverfd, "\r\n", strlen("\r\n"));
+    if (rio_w == -1 && errno == EPIPE) {
+        //how do we call sig_ign
+        Close(serverfd);
+        freeaddrinfo(ai);
+        Free(hostnamep);
+        Free(portp);
+        Free(pathnamep);
+        Free(client_buf);
+        Free(log_data);
+        //Free(buf);
+        Free(temp_buf);
+        return;
+        //signal(sig_ign, SIGPIPE);
+    }
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
     printf("finished FINALLY writing headers 2 and sent a new empty line\n");
@@ -369,13 +376,31 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     printf("Writing to client now\n");
     //printf("Client buf is %s \n", client_buf);
     int size = 0;
-    while((length = rio_readlineb(&rio_server, client_buf, 3 * MAXLINE)) > 0) {
+    while((length = rio_readlineb(&rio_server, client_buf,  MAXLINE)) > 0) {
 //    	printf("Entered loop for writing to server\n");
 //        printf("Sending the message: %s\n", client_buf);
-        rio_writen(fd, client_buf, length);
+        rio_w = rio_writen(fd, client_buf, length);
+        if (rio_w == -1 && errno == EPIPE) {
+        //how do we call sig_ign
+        Close(serverfd);
+        freeaddrinfo(ai);
+        Free(hostnamep);
+        Free(portp);
+        Free(pathnamep);
+        Free(client_buf);
+        Free(log_data);
+        //Free(buf);
+        Free(temp_buf);
+        return;
+        //signal(sig_ign, SIGPIPE);
+    }
+
         size += length;
 
     }
+
+
+
     log_data = create_log_entry((const struct sockaddr_in *)&clientaddr, uri, size);
 
     //fprintf(proxy_log, "%s\n", log_data);
@@ -393,12 +418,13 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     // TODO: put stuff in the log
     /*. CLOSE. CLIENT FD*/
     Close(serverfd);
+    freeaddrinfo(ai);
     Free(hostnamep);
     Free(portp);
     Free(pathnamep);
     Free(client_buf);
     Free(log_data);
-    Free(buf);
+    //Free(buf);
     Free(temp_buf);
 
     /* after everything is functional */
@@ -410,60 +436,12 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 } // end doit
 
 
-/*
- * Requires:
- *   hostname points to a string representing a host name, and port in an
- *   integer representing a TCP port number.
- *
- * Effects:
- *   Opens a TCP connection to the server at <hostname, port> and returns a
- *   file descriptor ready for reading and writing.  Returns -1 and sets
- *   errno on a Unix error.  Returns -2 on a DNS (getaddrinfo) error.
- */
-static int
-open_client(char *hostname, int port)
-{
-    printf("Starting to open client now!\n");
-	struct sockaddr_in serveraddr;
-	struct addrinfo *ai;
-	int clientfd;
-
-	// Set clientfd to a newly created stream socket.
-	// REPLACE THIS.
-	clientfd = socket(AF_INET, SOCK_STREAM, 0);
-
-	printf("OPENED the SOCKET\n");
-
-	// Use getaddrinfo() to get the server's IP address.
-	getaddrinfo(hostname, NULL, NULL, &ai);
-    printf("got the ADDRESS info\n");
-	/*
-	 * Set the address of serveraddr to be server's IP address and port.
-	 * Be careful to ensure that the IP address and port are in network
-	 * byte order.
-	 */
-	memset(&serveraddr, 0, sizeof(serveraddr));
-	printf("SET THE MEMORY ASIDE FOR SERVERADDR\n");
-	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
-	serveraddr.sin_port = htons(port);
-	printf("The port is %d\n", serveraddr.sin_port);
-
-    printf("FINISHED ASSIGNING SERVERADDRS struct thingys\n");
-	// Establish a connection to the server with connect().
-	connect(clientfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
-	printf("CONNECTED TO CLIENT File Descriptor\n");
-
-	return (clientfd);
-
-}
-
 
 
 /*
  * read_requesthdrs - read and parse HTTP request headers
  */
-void read_requesthdrs(rio_t *rp, int clientfd, char *buf)
+void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
 {
 //    int size = 7;
 //    char *temp_buf = calloc(size, sizeof(char));
@@ -475,44 +453,51 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf)
     printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
 //    printf("ORIGINAL temp_buf size is %d \n", (int) sizeof(temp_buf));
     //char *single_header = calloc(MAXLINE, sizeof(char));
+    int rio_r;
+    int rio_w;
     char *new_ptr = calloc((4 * MAXLINE), sizeof(char));
 
     new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
     buf= new_ptr;
 
-//    rio_readnb(rp, temp_buf, size);
-//    strcat(buf, temp_buf);
-//    /* create initial line of headers*/
-//
-//    while(strcmp(check_buf, "\r\n\r\n") != 0) {
-//        Rio_readnb(rp, temp_buf, size);
-//        if((strlen(buf) + strlen(temp_buf) * sizeof(char)) > sizeof(buf)) {
-//                printf("0: str_len buf is : %d , str_len temp_buf is : %d \n", (int) strlen(buf), (int) strlen(temp_buf));
-//                printf("1: temp_buf is %s\n", temp_buf);
-//                printf("2: buf is %s\n", buf);
-//                new_ptr = (char *)realloc(buf, sizeof(buf) + MAXLINE);
-//                buf= new_ptr;
-//                strcat(buf, temp_buf);
-//            } else {
-//               printf("3: temp_buf is %s\n", temp_buf);
-//               printf("4: buf is %s\n", buf);
-//               strcat(buf, temp_buf);
-//            }
-//        buf_length = strlen(buf);
-//        printf("buf_length is %d\n", buf_length);
-//        check_buf = &buf[buf_length - 4];
-//        printf("check_buf is %s\n", check_buf);
-//
-//    }
-
-
-
     /*An edited version for testing purposes*/
     char temp_buf[MAXLINE * 3];
-    Rio_readlineb(rp, temp_buf, MAXLINE * 3);
-    if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
-    strstr(temp_buf, "Connection: connection") == NULL &&
-    strstr(temp_buf, "Connection: keep-alive") == NULL &&
+
+     /*  add connection closed to buff and send*/
+
+    if (strstr(version, "1.1") != NULL) { // it's version 1.1
+        //rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+        //printf("Connection closed header sent.\n");
+
+        if((strlen(buf) + strlen("Connection: close\r\n") *sizeof(char)) > sizeof(buf)) {
+                new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
+                buf= new_ptr;
+                strcat(buf, "Connection: close\r\n");
+            } else {
+                printf("3: temp_buf is %s\n", "Connection: close\r\n");
+                printf("4: buf is %s\n", buf);
+                strcat(buf, "Connection: close");
+            }
+    }
+
+
+    rio_r = rio_readlineb(rp, temp_buf, MAXLINE * 3);
+    /* check whether client connection has been closed*/
+    if (rio_r == -1 && errno == ECONNRESET) {
+        printf("Client has closed\n");
+        Free(buf);
+        Free(new_ptr);
+        Free(temp_buf);
+        //Close(clientfd);
+        //Close(serverfd);
+        return;
+
+    }
+    /* make case insensitive string comparison*/
+
+    if(strncasecmp(temp_buf, "proxy-connection:", 17) != 0 &&
+    strncasecmp(temp_buf, "connection:", 11) != 0 &&
+    strncasecmp(temp_buf, "keep-alive:", 11) != 0 &&
     strcmp(temp_buf, "\r\n")) {
         printf("SENDING THE FIRST HEADER\n");
         printf("%s", temp_buf);
@@ -548,9 +533,23 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf)
         }
     }
 
+    
+
     printf("the buf after is\n%s \n", buf);
-    rio_writen(clientfd, buf, strlen(buf));
+    printf("%d\n", clientfd);
+    
+
+    rio_w = rio_writen(clientfd, buf, strlen(buf));
+    if (rio_w == -1 && errno == EPIPE) {
+        Free(buf);
+        Free(new_ptr);
+        Free(temp_buf);
+        return;
+    }
     printf("finished writing headers\n");
+    Free(buf);
+    Free(new_ptr);
+    Free(temp_buf);
     return;
 }
 
@@ -795,6 +794,56 @@ client_error(int fd, const char *cause, int err_num, const char *short_msg,
 	/* Write the HTTP response. */
 	if (rio_writen(fd, headers, strlen(headers)) != -1)
 		rio_writen(fd, body, strlen(body));
+}
+
+/*
+ * Requires:
+ *   hostname points to a string representing a host name, and port in an
+ *   integer representing a TCP port number.
+ *
+ * Effects:
+ *   Opens a TCP connection to the server at <hostname, port> and returns a
+ *   file descriptor ready for reading and writing.  Returns -1 and sets
+ *   errno on a Unix error.  Returns -2 on a DNS (getaddrinfo) error.
+ */
+static int
+open_client(char *hostname, int port)
+{
+    /* TODO: Free address info call to free address info*/
+    printf("Starting to open client now!\n");
+    struct sockaddr_in serveraddr;
+    //struct addrinfo *ai;
+    int clientfd;
+
+    // Set clientfd to a newly created stream socket.
+    // REPLACE THIS.
+    clientfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    printf("OPENED the SOCKET\n");
+
+    // Use getaddrinfo() to get the server's IP address.
+    getaddrinfo(hostname, NULL, NULL, &ai);
+    printf("got the ADDRESS info\n");
+    /*
+     * Set the address of serveraddr to be server's IP address and port.
+     * Be careful to ensure that the IP address and port are in network
+     * byte order.
+     */
+    memset(&serveraddr, 0, sizeof(serveraddr));
+    printf("SET THE MEMORY ASIDE FOR SERVERADDR\n");
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
+    serveraddr.sin_port = htons(port);
+    printf("The port is %d\n", serveraddr.sin_port);
+
+    printf("FINISHED ASSIGNING SERVERADDRS struct thingys\n");
+    // Establish a connection to the server with connect().
+    connect(clientfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
+    printf("CONNECTED TO CLIENT File Descriptor\n");
+
+
+    return (clientfd);
+
 }
 
 // Prevent "unused function" and "unused variable" warnings.
