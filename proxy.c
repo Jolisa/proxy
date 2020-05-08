@@ -48,6 +48,8 @@ struct client_info {
 };
 //int glob_connfd;
 
+int request_num = -1;
+
 int nthreads = 5; /* number of threads created. */
 int max_num_connections = 1;
 struct client_info connection_array[1]; /* Echo buffer. */
@@ -211,6 +213,8 @@ connection_func(void *arg) {
         //printf("%d Client fd is: %d\n", tid, client_conn.connfd);
         connection_index--;
 
+        request_num++;
+
         if ((connection_index + 1) == (max_num_connections - 1)) {
             //printf("sending the connection array full signal\n");
             Pthread_cond_signal(&cond_connection_array_full);
@@ -259,14 +263,15 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      //int rio_w;
 //     char *buf = calloc(3 * MAXLINE, sizeof(char));
 //     char *log_data = calloc(MAXLINE, sizeof(char));
-     char *temp_buf= calloc(MAXLINE, sizeof(char));
+//     char *temp_buf= calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-     char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
+//     char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
      rio_t rio, rio_server;
 
      char buf[3*MAXLINE];
-//     char log_data[MAXLINE];
+     char temp_buf[MAXLINE];
+     char client_buf[MAXLINE];
      char *log_data;
 
 
@@ -276,6 +281,8 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      memset(version, 0, sizeof(version));
 
      memset(buf, 0, sizeof(buf));
+     memset(temp_buf, 0, sizeof(temp_buf));
+     memset(client_buf, 0, sizeof(client_buf));
 //     memset(log_data, 0, sizeof(log_data));
      
     //printf("Finished cleaning memory!!!\n");
@@ -291,10 +298,10 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
-        Free(client_buf);
+//        Free(client_buf);
        // Free(log_data);
-        Free(buf);
-        Free(temp_buf);
+//        Free(buf);
+//        Free(temp_buf);
         
         //Close(clientfd);
         //Close(serverfd);
@@ -342,8 +349,12 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
     // writes first line of request to the origin server
    // Rio_writen(serverfd, buf, strlen(buf));
+    char *ip_address = malloc(MAXLINE*sizeof(char));
+    Inet_ntop(AF_INET, &((const struct sockaddr_in *)&clientaddr)->sin_addr, ip_address,
+        INET_ADDRSTRLEN);
+    printf("Request %d: Recieved request from %s:\n", request_num, ip_address);
+    printf(temp_buf);
 
-    
 
     strcpy(buf, "GET ");
     strcat(buf, pathnamep);
@@ -367,10 +378,10 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
-        Free(client_buf);
+//        Free(client_buf);
         //Free(log_data);
         //Free(buf);
-        Free(temp_buf);
+//        Free(temp_buf);
         return;
         //signal(sig_ign, SIGPIPE);
     }
@@ -386,29 +397,22 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     //printf("Writing to client now\n");
     //printf("Client buf is %s \n", client_buf);
     int size = 0;
-    while((length = rio_readlineb(&rio_server, client_buf,  MAXLINE)) > 0) {
+
+    printf(\n"*** End of Request ***\n");
+    while((length = rio_readnb(&rio_server, client_buf,  MAXLINE)) > 0) {
 //    	printf("Entered loop for writing to server\n");
 //        printf("Sending the message: %s\n", client_buf);
+        printf("Request %d: Forwarded %d bytes from end server to client\n", request_num, length);
         rio_w = rio_writen(fd, client_buf, length);
         if (rio_w == -1 && errno == EPIPE) {
-        //how do we call sig_ign
-        printf("In failed write condition\n"); 
-        printf("Free 6\n");   
         Close(serverfd);
         freeaddrinfo(ai);
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
-        Free(client_buf);
-        //Free(log_data);
-        //Free(buf);
-        Free(temp_buf);
         return;
-        //signal(sig_ign, SIGPIPE);
     }
-
         size += length;
-
     }
 
 
@@ -421,31 +425,13 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     fflush(proxy_log);
 
 
-    //printf("size of log data is %d \n", size);
-    printf("Log data is : %s\n", log_data);
-   // Rio_readlineb(&rio_client, client_buf, strlen(client_buf));
-
-    // TODO: send message back to client
-   // Rio_writen(fd, client_buf, strlen(client_buf));
-    // TODO: put stuff in the log
-    /*. CLOSE. CLIENT FD*/
-    printf("Free 7\n");
     Close(serverfd);
     freeaddrinfo(ai);
     Free(hostnamep);
     Free(portp);
     Free(pathnamep);
-    Free(client_buf);
     Free(log_data);
-    //Free(buf);
-    Free(temp_buf);
-    printf("Finished last free in do it\n");
 
-    /* after everything is functional */
-    // TODO: fix the memory allocation in buffer - do realloc and store all the headers in one buf
-
-    //we're doing the same thing twice, and it's interfereing
-    //in the doit, we're populating the buffer, then do it again in readrequest headers
      
 } // end doit
 
@@ -480,21 +466,6 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
 
      /*  add connection closed to buff and send*/
 
-    if (strstr(version, "1.1") != NULL) { // it's version 1.1
-        //rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
-        //printf("Connection closed header sent.\n");
-
-        if((strlen(buf) + strlen("Connection: close\r\n") * sizeof(char)) > sizeof(buf)) {
-                new_ptr = (char *)Realloc(buf, strlen(buf) + (4 * MAXLINE));
-                buf= new_ptr;
-                strcat(buf, "Connection: close\r\n");
-            } else {
-                //printf("3: temp_buf is %s\n", "Connection: close\r\n");
-                //printf("4: buf is %s\n", buf);
-                strcat(buf, "Connection: close");
-            }
-    }
-
 
     rio_r = rio_readlineb(rp, temp_buf, MAXLINE * 3);
     /* check whether client connection has been closed*/
@@ -517,6 +488,7 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
     strcmp(temp_buf, "\r\n")) {
         //printf("SENDING THE FIRST HEADER\n");
         //printf("%s", temp_buf);
+        printf(temp_buf);
         if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
             new_ptr = (char *)Realloc(buf, strlen(buf) + (4 * MAXLINE));
             buf= new_ptr;
@@ -530,6 +502,7 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
     }
     while(strcmp(temp_buf, "\r\n") != 0) {
         Rio_readlineb(rp, temp_buf, (3 * MAXLINE));
+        printf(temp_buf);
         if(strstr(temp_buf, "Connection: proxy-connection") == NULL &&
             strstr(temp_buf, "Connection: connection") == NULL &&
             strstr(temp_buf, "Connection: keep-alive") == NULL &&
@@ -549,10 +522,29 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
         }
     }
 
+    if (strstr(version, "1.1") != NULL) { // it's version 1.1
+        //rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
+        //printf("Connection closed header sent.\n");
+
+        if((strlen(buf) + strlen("Connection: close\r\n") * sizeof(char)) > sizeof(buf)) {
+                new_ptr = (char *)Realloc(buf, strlen(buf) + (4 * MAXLINE));
+                buf= new_ptr;
+                strcat(buf, "Connection: close\r\n");
+            } else {
+                //printf("3: temp_buf is %s\n", "Connection: close\r\n");
+                //printf("4: buf is %s\n", buf);
+                strcat(buf, "Connection: close");
+            }
+    }
+
     
 
     //printf("the buf after is\n%s \n", buf);
     //printf("%d\n", clientfd);
+
+    printf("*** End of Request ***\n");
+    printf("Request %d: Forwarding request to end server:\n", request_num);
+    printf(buf);
     
 
     rio_w = rio_writen(clientfd, buf, strlen(buf));
