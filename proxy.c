@@ -73,7 +73,7 @@ doit
 int
 main(int argc, char **argv)
 {
-    printf("STARTING MAIN PROCESS NOW\n");
+    //printf("STARTING MAIN PROCESS NOW\n");
     //for now, putting in what the tiny shell had, and we'll make adjustments
     signal(SIGPIPE, SIG_IGN);
     int listenfd, connfd;
@@ -127,14 +127,14 @@ main(int argc, char **argv)
 
         //accepts connection request
         connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-        printf("New connfd is %d\n", connfd);
-        printf("Connection index is %d\n", connection_index);
+        //printf("New connfd is %d\n", connfd);
+        //printf("Connection index is %d\n", connection_index);
         for (i = 0; i< connection_index; i++) {
                 printf("Connection array at i %d is: \n", connection_array[i].connfd);
 
         }
         if (connfd > 0) {
-            printf("We entered the connfd > 0 condition; connfd is %d\n", connfd);
+            //printf("We entered the connfd > 0 condition; connfd is %d\n", connfd);
             Pthread_mutex_lock(&mutex);
 
             client_conn.connfd = connfd;
@@ -143,7 +143,7 @@ main(int argc, char **argv)
 
             while(connection_index == (max_num_connections - 1)) {
                 Pthread_cond_wait(&cond_connection_array_full, &mutex);
-                printf("Have the array full signal condition\n");
+                //printf("Have the array full signal condition\n");
             }
 
             connection_array[connection_index + 1] = client_conn;
@@ -151,7 +151,7 @@ main(int argc, char **argv)
             //enque connection struct
 
             if(connection_index == 0) {
-                printf("sending the connection available signal");
+                //printf("sending the connection available signal");
                 Pthread_cond_signal(&cond_connection_available);
             }
 
@@ -186,8 +186,8 @@ main(int argc, char **argv)
 
 void * 
 connection_func(void *arg) {
-    int tid = (int)Pthread_self();
-    printf("Thread  %d Entering connection function!\n", tid);
+    //int tid = (int)Pthread_self();
+    //printf("Thread  %d Entering connection function!\n", tid);
     
     arg = (void *)arg;
 
@@ -198,27 +198,27 @@ connection_func(void *arg) {
 //        printf("Have the thread available condition\n");
 
         Pthread_mutex_lock(&mutex);
-        printf("%d acquired mutex lock\n", tid);
+        //printf("%d acquired mutex lock\n", tid);
 
         while (connection_index < 0) {
             Pthread_cond_wait(&cond_connection_available, &mutex);
-            printf("%d Have the connection condition\n", tid);
+            //printf("%d Have the connection condition\n", tid);
         }
 
 
         struct client_info client_conn;
         client_conn = connection_array[connection_index];
-        printf("%d Client fd is: %d\n", tid, client_conn.connfd);
+        //printf("%d Client fd is: %d\n", tid, client_conn.connfd);
         connection_index--;
 
         if ((connection_index + 1) == (max_num_connections - 1)) {
-            printf("sending the connection array full signal\n");
+            //printf("sending the connection array full signal\n");
             Pthread_cond_signal(&cond_connection_array_full);
         }
 
         /* Release mutex lock. */
         Pthread_mutex_unlock(&mutex);
-        printf("%d released mutex lock\n", tid);
+        //printf("%d released mutex lock\n", tid);
 
 
         //clientlen = sizeof(clientaddr);
@@ -230,7 +230,7 @@ connection_func(void *arg) {
 
 
         doit(client_conn.connfd, client_conn.clientaddr); //performs the transaction
-        printf("This is the thread that executed %d\n", tid);
+        //printf("This is the thread that executed %d\n", tid);
         Close(client_conn.connfd); //closes end of connection
 
 
@@ -246,7 +246,7 @@ connection_func(void *arg) {
 
 void doit(int fd, struct sockaddr_storage clientaddr)
 {
-     printf("STARTING DOIT FUNCTION!!!\n");
+     //printf("STARTING DOIT FUNCTION!!!\n");
      
 //     int clientfd;
      //struct stat sbuf;
@@ -270,7 +270,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      memset(uri, 0, sizeof(uri));
      memset(version, 0, sizeof(version));
      
-    printf("Finished cleaning memory!!!\n");
+    //printf("Finished cleaning memory!!!\n");
 
      /* First, we have to get the FIRST request line and parse it */
 
@@ -278,13 +278,14 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
      if((rio_r = rio_readlineb(&rio, temp_buf, MAXLINE)) == -1 && errno == ECONNRESET) {
         printf("No request to read! ERROR!\n");
+        printf("Free 1\n");
         freeaddrinfo(ai);
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
         Free(client_buf);
         Free(log_data);
-        //Free(buf);
+        Free(buf);
         Free(temp_buf);
         
         //Close(clientfd);
@@ -297,7 +298,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
 
 
-     printf("The first line of request from client is: %s\n", buf);
+     //printf("The first line of request from client is: %s\n", buf);
 
      /* Verify that this is a get request*/
     sscanf(temp_buf, "%s %s %s", method, uri, version);
@@ -314,13 +315,13 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         return;
     }
 
-    printf("About to parse uri:\n");
-    printf("Uri is: %s\n", uri);
+    //printf("About to parse uri:\n");
+    //printf("Uri is: %s\n", uri);
 
     parse_uri(uri, &hostnamep, &portp, &pathnamep);
-    printf("Hostname is: %s\n", hostnamep);
+    /*printf("Hostname is: %s\n", hostnamep);
     printf("Port is: %s and in int form: %d\n", portp, atoi(portp));
-    printf("Pathname is: %s\n", pathnamep);
+    printf("Pathname is: %s\n", pathnamep);*/
 
     serverfd = open_client(hostnamep, atoi(portp));
     /* error check for client file descriptor*/
@@ -341,17 +342,18 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     strcat(buf, " ");
     strcat(buf, version);
     strcat(buf, "\r\n");
-    printf("Buf is %s \n", buf);
+    //printf("Buf is %s \n", buf);
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, serverfd, buf, version);
 
    
-
+    //printf("returned from writing headers\n");
     /* Write empty line to server to signal end of headers*/
     rio_w = rio_writen(serverfd, "\r\n", strlen("\r\n"));
     if (rio_w == -1 && errno == EPIPE) {
         //how do we call sig_ign
+        printf("Free 5\n");
         Close(serverfd);
         freeaddrinfo(ai);
         Free(hostnamep);
@@ -366,14 +368,14 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     }
 
     /*Should have sent everything we needed to send (request) from proxy to origin server*/
-    printf("finished FINALLY writing headers 2 and sent a new empty line\n");
+    //printf("finished FINALLY writing headers 2 and sent a new empty line\n");
 
 
     // TODO: proxy read message from origin server and writes back to client
     int length = 1;
-    printf("Writing to client soon\n");
+    //printf("Writing to client soon\n");
     //length = rio_readlineb(&rio_client, client_buf, MAXLINE);
-    printf("Writing to client now\n");
+    //printf("Writing to client now\n");
     //printf("Client buf is %s \n", client_buf);
     int size = 0;
     while((length = rio_readlineb(&rio_server, client_buf,  MAXLINE)) > 0) {
@@ -382,6 +384,8 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         rio_w = rio_writen(fd, client_buf, length);
         if (rio_w == -1 && errno == EPIPE) {
         //how do we call sig_ign
+        printf("In failed write condition\n"); 
+        printf("Free 6\n");   
         Close(serverfd);
         freeaddrinfo(ai);
         Free(hostnamep);
@@ -409,7 +413,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     fflush(proxy_log);
 
 
-    printf("size of log data is %d \n", size);
+    //printf("size of log data is %d \n", size);
     printf("Log data is : %s\n", log_data);
    // Rio_readlineb(&rio_client, client_buf, strlen(client_buf));
 
@@ -417,6 +421,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
    // Rio_writen(fd, client_buf, strlen(client_buf));
     // TODO: put stuff in the log
     /*. CLOSE. CLIENT FD*/
+    printf("Free 7\n");
     Close(serverfd);
     freeaddrinfo(ai);
     Free(hostnamep);
@@ -426,6 +431,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     Free(log_data);
     //Free(buf);
     Free(temp_buf);
+    printf("Finished last free in do it\n");
 
     /* after everything is functional */
     // TODO: fix the memory allocation in buffer - do realloc and store all the headers in one buf
@@ -450,14 +456,14 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
 //    char buf[MAXLINE];
 //    char single_header[MAXLINE];
    // char *buf = calloc(MAXLINE, sizeof(char));
-    printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
+    //printf("ORIGINAL buf size is %d \n", (int) sizeof(buf));
 //    printf("ORIGINAL temp_buf size is %d \n", (int) sizeof(temp_buf));
     //char *single_header = calloc(MAXLINE, sizeof(char));
     int rio_r;
     int rio_w;
     char *new_ptr = calloc((4 * MAXLINE), sizeof(char));
 
-    new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
+    new_ptr = (char *)realloc(buf, sizeof(buf) + (4 * MAXLINE));
     buf= new_ptr;
 
     /*An edited version for testing purposes*/
@@ -470,12 +476,12 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
         //printf("Connection closed header sent.\n");
 
         if((strlen(buf) + strlen("Connection: close\r\n") *sizeof(char)) > sizeof(buf)) {
-                new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
+                new_ptr = (char *)Realloc(buf, sizeof(buf) + (4 * MAXLINE));
                 buf= new_ptr;
                 strcat(buf, "Connection: close\r\n");
             } else {
-                printf("3: temp_buf is %s\n", "Connection: close\r\n");
-                printf("4: buf is %s\n", buf);
+                //printf("3: temp_buf is %s\n", "Connection: close\r\n");
+                //printf("4: buf is %s\n", buf);
                 strcat(buf, "Connection: close");
             }
     }
@@ -484,10 +490,11 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
     rio_r = rio_readlineb(rp, temp_buf, MAXLINE * 3);
     /* check whether client connection has been closed*/
     if (rio_r == -1 && errno == ECONNRESET) {
-        printf("Client has closed\n");
+        //printf("Client has closed\n");
+        printf("Free 2\n");
         Free(buf);
         Free(new_ptr);
-        Free(temp_buf);
+        //Free(temp_buf);
         //Close(clientfd);
         //Close(serverfd);
         return;
@@ -499,15 +506,15 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
     strncasecmp(temp_buf, "connection:", 11) != 0 &&
     strncasecmp(temp_buf, "keep-alive:", 11) != 0 &&
     strcmp(temp_buf, "\r\n")) {
-        printf("SENDING THE FIRST HEADER\n");
-        printf("%s", temp_buf);
+        //printf("SENDING THE FIRST HEADER\n");
+        //printf("%s", temp_buf);
         if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
-            new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
+            new_ptr = (char *)Realloc(buf, sizeof(buf) + (4 * MAXLINE));
             buf= new_ptr;
             strcat(buf, temp_buf);
         } else {
-            printf("3: temp_buf is %s\n", temp_buf);
-            printf("4: buf is %s\n", buf);
+            //printf("3: temp_buf is %s\n", temp_buf);
+            //printf("4: buf is %s\n", buf);
             strcat(buf, temp_buf);
         }
         //Rio_writen(clientfd, temp_buf, strlen(temp_buf));
@@ -520,14 +527,14 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
             strcmp(temp_buf, "\r\n")) {
 //                Rio_writen(clientfd, temp_buf, strlen(temp_buf));
 //            	printf("Sending the header of %s \n", temp_buf);
-            printf("%s", temp_buf);
+            //printf("%s", temp_buf);
             if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
-                new_ptr = (char *)realloc(buf, sizeof(buf) + (3 * MAXLINE));
+                new_ptr = (char *)realloc(buf, sizeof(buf) + (4 * MAXLINE));
                 buf= new_ptr;
                 strcat(buf, temp_buf);
             } else {
-                printf("3: temp_buf is %s\n", temp_buf);
-                printf("4: buf is %s\n", buf);
+                //printf("3: temp_buf is %s\n", temp_buf);
+                //printf("4: buf is %s\n", buf);
                 strcat(buf, temp_buf);
             }
         }
@@ -535,21 +542,26 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
 
     
 
-    printf("the buf after is\n%s \n", buf);
-    printf("%d\n", clientfd);
+    //printf("the buf after is\n%s \n", buf);
+    //printf("%d\n", clientfd);
     
 
     rio_w = rio_writen(clientfd, buf, strlen(buf));
+    /* check whether write failed*/
     if (rio_w == -1 && errno == EPIPE) {
+        printf("Free 3\n");
         Free(buf);
         Free(new_ptr);
-        Free(temp_buf);
+        //Free(temp_buf);
         return;
+    } else {
+        printf("Free 4\n");
+        /*Free(buf);
+        Free(new_ptr);
+        Free(temp_buf);*/
     }
-    printf("finished writing headers\n");
-    Free(buf);
-    Free(new_ptr);
-    Free(temp_buf);
+    
+    
     return;
 }
 
@@ -623,16 +635,16 @@ static int
 parse_uri(const char *uri, char **hostnamep, char **portp, char **pathnamep)
 {
 	const char *pathname_begin, *port_begin, *port_end;
-	printf("in parse uri\n");
-	printf("the uri is: %s\n", uri);
+	//printf("in parse uri\n");
+	//printf("the uri is: %s\n", uri);
 	if (strncasecmp(uri, "http://", 7) != 0) {
 	    printf("invalid http starting for uri!!!\n");
 	    return (-1);
 	}
 
-	printf("in parse uri2\n");
-	printf("The uri is: %s\n", uri);
-	printf("Won't print\n");
+	//printf("in parse uri2\n");
+	//printf("The uri is: %s\n", uri);
+	//printf("Won't print\n");
 	/* Extract the host name. */
 	const char *host_begin = uri + 7;
 	const char *host_end = strpbrk(host_begin, ":/ \r\n");
@@ -677,8 +689,8 @@ parse_uri(const char *uri, char **hostnamep, char **portp, char **pathnamep)
 	pathname[len] = '\0';
 	*pathnamep = pathname;
 	
-	printf("The hostname is %s\n", *hostnamep);
-	printf("The port is %s\n", *portp);
+	//printf("The hostname is %s\n", *hostnamep);
+	//printf("The port is %s\n", *portp);
 
 	return (0);
 }
@@ -810,7 +822,7 @@ static int
 open_client(char *hostname, int port)
 {
     /* TODO: Free address info call to free address info*/
-    printf("Starting to open client now!\n");
+    //printf("Starting to open client now!\n");
     struct sockaddr_in serveraddr;
     //struct addrinfo *ai;
     int clientfd;
@@ -819,27 +831,27 @@ open_client(char *hostname, int port)
     // REPLACE THIS.
     clientfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    printf("OPENED the SOCKET\n");
+    //printf("OPENED the SOCKET\n");
 
     // Use getaddrinfo() to get the server's IP address.
     getaddrinfo(hostname, NULL, NULL, &ai);
-    printf("got the ADDRESS info\n");
+    //printf("got the ADDRESS info\n");
     /*
      * Set the address of serveraddr to be server's IP address and port.
      * Be careful to ensure that the IP address and port are in network
      * byte order.
      */
     memset(&serveraddr, 0, sizeof(serveraddr));
-    printf("SET THE MEMORY ASIDE FOR SERVERADDR\n");
+    //printf("SET THE MEMORY ASIDE FOR SERVERADDR\n");
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
     serveraddr.sin_port = htons(port);
-    printf("The port is %d\n", serveraddr.sin_port);
+    //printf("The port is %d\n", serveraddr.sin_port);
 
-    printf("FINISHED ASSIGNING SERVERADDRS struct thingys\n");
+    //printf("FINISHED ASSIGNING SERVERADDRS struct thingys\n");
     // Establish a connection to the server with connect().
     connect(clientfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
-    printf("CONNECTED TO CLIENT File Descriptor\n");
+    //printf("CONNECTED TO CLIENT File Descriptor\n");
 
 
     return (clientfd);
@@ -850,42 +862,6 @@ open_client(char *hostname, int port)
 static const void *dummy_ref[] = { client_error, create_log_entry, dummy_ref,
     parse_uri };
 
-    //TODO: Remove this extra commented code before submitting
-
-    //THIS CODE CAME FROM DOIT ++++++++++++++++++++++++++++++++++
-     //Rio_readlineb(&rio, buf , MAX);
-
-     //printf("Maxline is %d\n", MAXLINE);
-     /*while(strcmp(buf, "\r\n")) {
-     	buf_extended = (char*) realloc(buf_extended, (count * MAX));
-     	//Rio_readlineb(&rio, ((buf )), MAX);
-        Rio_readlineb(&rio, ((buf + count * MAX)), MAX);
-        strcat(buf_extended, buf);
-        printf("bufis : %s and is size %d\n", buf, (int) strlen(buf));
-        printf("buf_extended is : %s and is size %d\n", buf_extended, (int) strlen(buf_extended));
-        count += 1;
-        printf("Count is %d\n", count);
-    }*/
-    //DOIT++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-
-
-    //THIS CAME FROM CONNECTION FUNC
-    //        /* release thread */
-    //        Pthread_mutex_lock(&thread_lock);
-    //        printf("acquired the thread lock\n");
-    //        if (thread_cnt == 0) {
-    //            /* signal thread is now available*/
-    //            thread_cnt += 1;
-    //            printf("about to send the condition thread available signal\n");
-    //            pthread_cond_signal(&cond_thread_available);
-    //            printf("sent the condition thread available signal\n");
-    //
-    //        } else {
-    //            thread_cnt += 1;
-    //        }
-    //
-    //        Pthread_mutex_unlock(&thread_lock);
-    //        printf("released the thread lock\n");
+    
 
     //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
