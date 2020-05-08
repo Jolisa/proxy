@@ -283,9 +283,6 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      memset(buf, 0, sizeof(buf));
      memset(temp_buf, 0, sizeof(temp_buf));
      memset(client_buf, 0, sizeof(client_buf));
-//     memset(log_data, 0, sizeof(log_data));
-     
-    //printf("Finished cleaning memory!!!\n");
 
      /* First, we have to get the FIRST request line and parse it */
 
@@ -293,50 +290,31 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
      if((rio_r = rio_readlineb(&rio, temp_buf, MAXLINE)) == -1 && errno == ECONNRESET) {
         printf("No request to read! ERROR!\n");
-        printf("Free 1\n");
         freeaddrinfo(ai);
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
-//        Free(client_buf);
-       // Free(log_data);
-//        Free(buf);
-//        Free(temp_buf);
-        
-        //Close(clientfd);
-        //Close(serverfd);
         return;
         
      }
-    
-
-
-
-
-     //printf("The first line of request from client is: %s\n", buf);
 
      /* Verify that this is a get request*/
     sscanf(temp_buf, "%s %s %s", method, uri, version);
-    if (strcasecmp(method, "GET")) {
-        client_error(fd, method, 501, "Not implemented",
-        "This proxy server does not implement this method");
+     if (strcasecmp(method, "GET")) {
+        client_error(fd, method, 501, "Not implemented\n",
+        "This proxy server does not implement this method\n");
+        printf("\n*** End of Request ***\n");
+        printf("Request %d: Received non-GET request\n", request_num);
          return;
-    }
-    /* TODO: string compare to HTTP/1.0 or 1.1*/
+     }
 
-    if(strstr(version, "1.1") == NULL && strstr(version, "1.0") == NULL) {
+    if(strcmp(version, "HTTP/1.1") != 0 && strcmp(version, "HTTP/1.0") != 0) {
         client_error(fd, version, 500, "Not supported",
         "This proxy server does not support this version");
         return;
     }
 
-    //printf("About to parse uri:\n");
-    //printf("Uri is: %s\n", uri);
-
     parse_uri(uri, &hostnamep, &portp, &pathnamep);
-    /*printf("Hostname is: %s\n", hostnamep);
-    printf("Port is: %s and in int form: %d\n", portp, atoi(portp));
-    printf("Pathname is: %s\n", pathnamep);*/
 
     serverfd = open_client(hostnamep, atoi(portp));
     /* error check for client file descriptor*/
@@ -347,63 +325,45 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 	}
     rio_readinitb(&rio_server, serverfd);
 
-    // writes first line of request to the origin server
-   // Rio_writen(serverfd, buf, strlen(buf));
+
     char *ip_address = malloc(MAXLINE*sizeof(char));
     Inet_ntop(AF_INET, &((const struct sockaddr_in *)&clientaddr)->sin_addr, ip_address,
         INET_ADDRSTRLEN);
     printf("Request %d: Recieved request from %s:\n", request_num, ip_address);
     printf(temp_buf);
 
-
+    /* formats first line of request */
     strcpy(buf, "GET ");
     strcat(buf, pathnamep);
     strcat(buf, " ");
     strcat(buf, version);
     strcat(buf, "\r\n");
-    //printf("Buf is %s \n", buf);
 
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, serverfd, buf, version);
 
-   
-    //printf("returned from writing headers\n");
     /* Write empty line to server to signal end of headers*/
     rio_w = rio_writen(serverfd, "\r\n", strlen("\r\n"));
+
     if (rio_w == -1 && errno == EPIPE) {
-        //how do we call sig_ign
-        printf("Free 5\n");
         Close(serverfd);
         freeaddrinfo(ai);
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
-//        Free(client_buf);
-        //Free(log_data);
-        //Free(buf);
-//        Free(temp_buf);
         return;
-        //signal(sig_ign, SIGPIPE);
     }
 
-    /*Should have sent everything we needed to send (request) from proxy to origin server*/
-    //printf("finished FINALLY writing headers 2 and sent a new empty line\n");
 
-
-    // TODO: proxy read message from origin server and writes back to client
     int length = 1;
-    //printf("Writing to client soon\n");
-    //length = rio_readlineb(&rio_client, client_buf, MAXLINE);
-    //printf("Writing to client now\n");
-    //printf("Client buf is %s \n", client_buf);
     int size = 0;
 
-    printf(\n"*** End of Request ***\n");
+    printf("\n*** End of Request ***\n");
     while((length = rio_readnb(&rio_server, client_buf,  MAXLINE)) > 0) {
-//    	printf("Entered loop for writing to server\n");
-//        printf("Sending the message: %s\n", client_buf);
+
         printf("Request %d: Forwarded %d bytes from end server to client\n", request_num, length);
         rio_w = rio_writen(fd, client_buf, length);
+
         if (rio_w == -1 && errno == EPIPE) {
         Close(serverfd);
         freeaddrinfo(ai);
@@ -419,11 +379,8 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
     log_data = create_log_entry((const struct sockaddr_in *)&clientaddr, uri, size);
 
-    //fprintf(proxy_log, "%s\n", log_data);
     fprintf(proxy_log, log_data);
-   // fputs(log_data, proxy_log);
     fflush(proxy_log);
-
 
     Close(serverfd);
     freeaddrinfo(ai);
