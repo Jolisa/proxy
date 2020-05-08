@@ -351,6 +351,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
+        Free(ip_address);
         return;
     }
 
@@ -370,6 +371,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
+        Free(ip_address);
         return;
     }
         size += length;
@@ -388,6 +390,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     Free(portp);
     Free(pathnamep);
     Free(log_data);
+    Free(ip_address);
 
      
 } // end doit
@@ -508,13 +511,10 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
 
     /* check whether write failed*/
     if (rio_w == -1 && errno == EPIPE) {
-        printf("Free 3\n");
-        Free(buf);
-    } else {
-        printf("Free 4\n");
-        Free(buf);
+        printf("Request %d: Write to end server failed\n", request_num);
     }
-
+    
+    Free(buf);
     return;
 }
 
