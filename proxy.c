@@ -257,18 +257,26 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      int serverfd, rio_r, rio_w;
      //int rio_r;
      //int rio_w;
-     char *buf = calloc(3 * MAXLINE, sizeof(char));
-     char *log_data = calloc(MAXLINE, sizeof(char));
+//     char *buf = calloc(3 * MAXLINE, sizeof(char));
+//     char *log_data = calloc(MAXLINE, sizeof(char));
      char *temp_buf= calloc(MAXLINE, sizeof(char));
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
      char *client_buf = calloc(MAXLINE, sizeof(char)); // [MAXLINE];
      rio_t rio, rio_server;
 
+     char buf[3*MAXLINE];
+//     char log_data[MAXLINE];
+     char *log_data;
+
+
      //initialize memory to 0, cleans out whatever was there previously
      memset(method, 0, sizeof(method));
      memset(uri, 0, sizeof(uri));
      memset(version, 0, sizeof(version));
+
+     memset(buf, 0, sizeof(buf));
+//     memset(log_data, 0, sizeof(log_data));
      
     //printf("Finished cleaning memory!!!\n");
 
@@ -284,7 +292,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(portp);
         Free(pathnamep);
         Free(client_buf);
-        Free(log_data);
+       // Free(log_data);
         Free(buf);
         Free(temp_buf);
         
@@ -360,7 +368,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(portp);
         Free(pathnamep);
         Free(client_buf);
-        Free(log_data);
+        //Free(log_data);
         //Free(buf);
         Free(temp_buf);
         return;
@@ -392,7 +400,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         Free(portp);
         Free(pathnamep);
         Free(client_buf);
-        Free(log_data);
+        //Free(log_data);
         //Free(buf);
         Free(temp_buf);
         return;
@@ -463,7 +471,8 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
     int rio_w;
     char *new_ptr = calloc((4 * MAXLINE), sizeof(char));
 
-    new_ptr = (char *)realloc(buf, sizeof(buf) + (4 * MAXLINE));
+    //new_ptr = (char *)realloc(buf, sizeof(buf) + (4 * MAXLINE));
+    memmove(new_ptr, buf, strlen(buf));
     buf= new_ptr;
 
     /*An edited version for testing purposes*/
@@ -475,8 +484,8 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
         //rio_writen(serverfd, "Connection: closed\r\n", strlen("Connection: closed\r\n"));
         //printf("Connection closed header sent.\n");
 
-        if((strlen(buf) + strlen("Connection: close\r\n") *sizeof(char)) > sizeof(buf)) {
-                new_ptr = (char *)Realloc(buf, sizeof(buf) + (4 * MAXLINE));
+        if((strlen(buf) + strlen("Connection: close\r\n") * sizeof(char)) > sizeof(buf)) {
+                new_ptr = (char *)Realloc(buf, strlen(buf) + (4 * MAXLINE));
                 buf= new_ptr;
                 strcat(buf, "Connection: close\r\n");
             } else {
@@ -509,7 +518,7 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
         //printf("SENDING THE FIRST HEADER\n");
         //printf("%s", temp_buf);
         if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
-            new_ptr = (char *)Realloc(buf, sizeof(buf) + (4 * MAXLINE));
+            new_ptr = (char *)Realloc(buf, strlen(buf) + (4 * MAXLINE));
             buf= new_ptr;
             strcat(buf, temp_buf);
         } else {
@@ -529,7 +538,7 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
 //            	printf("Sending the header of %s \n", temp_buf);
             //printf("%s", temp_buf);
             if((strlen(buf) + strlen(temp_buf) *sizeof(char)) > sizeof(buf)) {
-                new_ptr = (char *)realloc(buf, sizeof(buf) + (4 * MAXLINE));
+                new_ptr = (char *)realloc(buf, strlen(buf) + (4 * MAXLINE));
                 buf= new_ptr;
                 strcat(buf, temp_buf);
             } else {
@@ -547,21 +556,16 @@ void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version)
     
 
     rio_w = rio_writen(clientfd, buf, strlen(buf));
+
     /* check whether write failed*/
     if (rio_w == -1 && errno == EPIPE) {
         printf("Free 3\n");
         Free(buf);
-        Free(new_ptr);
-        //Free(temp_buf);
-        return;
     } else {
         printf("Free 4\n");
-        /*Free(buf);
-        Free(new_ptr);
-        Free(temp_buf);*/
+        Free(buf);
     }
-    
-    
+
     return;
 }
 
