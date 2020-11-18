@@ -44,7 +44,7 @@ pthread_cond_t cond_connection_available;
 
 pthread_mutex_t mutex;
 
-static void client_error(int fd, const char *cause, int err_num, 
+static void client_error(int fd, const char *cause, int err_num,
             const char *short_msg, const char *long_msg);
 static char *create_log_entry(const struct sockaddr_in *sockaddr,
             const char *uri, int size);
@@ -56,7 +56,7 @@ void doit(int fd, struct sockaddr_storage clientaddr);
 void read_requesthdrs(rio_t *rp, int clientfd, char *buf, char *version);
 void * connection_func(void *arg);
 
-/* 
+/*
  * Requires:
 *   argv[1] is a string representing a host name, and argv[2] is a string
 *   representing a TCP port number (in decimal).
@@ -75,7 +75,7 @@ main(int argc, char **argv)
     int i;
     long myid[nthreads];
     pthread_t tid[nthreads];
-    
+
     socklen_t clientlen;
     struct client_info client_conn;
     struct sockaddr_storage clientaddr;
@@ -145,7 +145,7 @@ main(int argc, char **argv)
             for (i = 0; i< connection_index; i++) {
                 printf("Inside if statement: Connection array at i %d is: \n",
                 connection_array[i].connfd);
-            }    
+            }
 
             Pthread_mutex_unlock(&mutex);
         }
@@ -171,7 +171,7 @@ main(int argc, char **argv)
  *   the connection request/response transaction using doit function.
  */
 
-void * 
+void *
 connection_func(void *arg) {
     arg = (void *)arg;
 
@@ -221,7 +221,7 @@ connection_func(void *arg) {
  */
 void doit(int fd, struct sockaddr_storage clientaddr)
 {
-     
+
      int serverfd, rio_r, rio_w;
      char *hostnamep, *portp, *pathnamep;
      char method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -242,18 +242,18 @@ void doit(int fd, struct sockaddr_storage clientaddr)
      memset(client_buf, 0, sizeof(client_buf));
 
 
-    
+
      //init reader
-     rio_readinitb(&rio, fd); 
+     rio_readinitb(&rio, fd);
       /* read first line of and parse it */
      if((rio_r = rio_readlineb(&rio, temp_buf, MAXLINE)) == -1 && errno == ECONNRESET) {
         Free(hostnamep);
         Free(portp);
         Free(pathnamep);
         return;
-        
+
      }
-    
+
      /* Verify that this is a get request*/
     sscanf(temp_buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) {
@@ -283,7 +283,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     rio_readinitb(&rio_server, serverfd);
 
     /* determine client address using sockaddr_in struct*/
-  
+
     char *ip_address = malloc(MAXLINE*sizeof(char));
     Inet_ntop(AF_INET, &((const struct sockaddr_in *)&clientaddr)->sin_addr, ip_address,
         INET_ADDRSTRLEN);
@@ -300,9 +300,9 @@ void doit(int fd, struct sockaddr_storage clientaddr)
     /* edited to check for headers we don't want to be sent, will send to origin server */
     read_requesthdrs(&rio, serverfd, buf, version);
 
-   
-   
-    /* Write empty line to server to signal end of headers*/
+
+
+    /* Write empty line to server to signal end of headers */
     rio_w = rio_writen(serverfd, "\r\n", strlen("\r\n"));
     if (rio_w == -1 && errno == EPIPE) {
         Close(serverfd);
@@ -313,7 +313,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         return;
     }
 
-   
+
     int length = 1;
     int size = 0;
 
@@ -323,7 +323,7 @@ void doit(int fd, struct sockaddr_storage clientaddr)
         printf("Request %d: Forwarded %d bytes from end server to client\n", request_num, length);
         rio_w = rio_writen(fd, client_buf, length);
         if (rio_w == -1 && errno == EPIPE) {
-             
+
             Close(serverfd);
             freeaddrinfo(ai);
             Free(hostnamep);
@@ -338,14 +338,14 @@ void doit(int fd, struct sockaddr_storage clientaddr)
 
     log_data = create_log_entry((const struct sockaddr_in *)&clientaddr, uri, size);
     fprintf(proxy_log, log_data);
-    fflush(proxy_log); 
+    fflush(proxy_log);
     Close(serverfd);
     Free(hostnamep);
     Free(portp);
     Free(pathnamep);
     Free(log_data);
 
-     
+
 } // end doit
 
 
@@ -437,7 +437,7 @@ void read_requesthdrs(rio_t *rp, int serverfd, char *buf, char *version)
     if (rio_w == -1 && errno == EPIPE) {
         printf("Request %d: Write to end server failed\n", request_num);
     }
-    
+
     Free(buf);
     return;
 }
@@ -460,7 +460,7 @@ static int
 parse_uri(const char *uri, char **hostnamep, char **portp, char **pathnamep)
 {
     const char *pathname_begin, *port_begin, *port_end;
-   
+
     if (strncasecmp(uri, "http://", 7) != 0) {
         printf("invalid http starting for uri!!!\n");
         return (-1);
@@ -567,7 +567,7 @@ create_log_entry(const struct sockaddr_in *sockaddr, const char *uri, int size)
 /*
  * Requires:
  *   The parameter "fd" must be an open socket that is connected to the client.
- *   The parameters "cause", "short_msg", and "long_msg" must point to properly 
+ *   The parameters "cause", "short_msg", and "long_msg" must point to properly
  *   NUL-terminated strings that describe the reason why the HTTP transaction
  *   failed.  The string "short_msg" may not exceed 32 characters in length,
  *   and the string "long_msg" may not exceed 80 characters in length.
@@ -630,14 +630,14 @@ client_error(int fd, const char *cause, int err_num, const char *short_msg,
 static int
 open_client(char *hostname, int port)
 {
-    
+
     struct sockaddr_in serveraddr;
     int clientfd;
     clientfd = socket(AF_INET, SOCK_STREAM, 0);
 
     // Use getaddrinfo() to get the server's IP address.
     getaddrinfo(hostname, NULL, NULL, &ai);
-  
+
     /*
      * Set the address of serveraddr to be server's IP address and port.
      * Be careful to ensure that the IP address and port are in network
@@ -647,9 +647,9 @@ open_client(char *hostname, int port)
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr = ((struct sockaddr_in *)(ai->ai_addr))->sin_addr;
     serveraddr.sin_port = htons(port);
-    
+
     connect(clientfd, (const struct sockaddr *) &serveraddr, sizeof(struct sockaddr_in));
-  
+
 
 
     return (clientfd);
